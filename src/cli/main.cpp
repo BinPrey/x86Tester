@@ -502,6 +502,8 @@ static void advanceInputs(
 {
     const auto regsRead = getRegsRead(instr);
     const auto flagsRead = getFlagsRead(instr);
+    const auto flagsSet0 = getFlagsSet0(instr);
+    const auto flagsSet1 = getFlagsSet1(instr);
 
     sfl::small_flat_set<ZydisRegister, 5> regsReadBig;
     for (const auto& reg : regsRead)
@@ -576,24 +578,50 @@ static void advanceInputs(
     }
 
     // Randomize read flags.
-    std::uint32_t flags = 0;
+    std::optional<std::uint32_t> inputFlags;
     if (flagsRead != 0)
     {
+        std::uint32_t setFlags = 0;
         for (std::size_t i = 0; i < 32; ++i)
         {
             if ((flagsRead & (1 << i)) != 0)
             {
-                flags |= (prng() % 2) << i;
+                setFlags |= (prng() % 2) << i;
             }
         }
+        inputFlags = setFlags;
+    }
 
-        testEntry.inputFlags = flags;
+    if (flagsSet0 != 0)
+    {
+        std::uint32_t setFlags = 0;
+        for (std::size_t i = 0; i < 32; ++i)
+        {
+            if ((flagsSet0 & (1 << i)) != 0)
+            {
+                setFlags |= 1U << i;
+            }
+        }
+        inputFlags = inputFlags.value_or(0) | setFlags;
+    }
+
+    if (flagsSet1 != 0)
+    {
+        inputFlags = inputFlags.value_or(0);
     }
 
     // Ensure we never have TF set.
-    flags &= ~ZYDIS_CPUFLAG_TF;
+    if (inputFlags)
+    {
+        inputFlags = inputFlags.value_or(0) & ~ZYDIS_CPUFLAG_TF;
+    }
 
-    ctx.setRegValue(ZYDIS_REGISTER_EFLAGS, flags);
+    if (inputFlags)
+    {
+        testEntry.inputFlags = *inputFlags;
+    }
+
+    ctx.setRegValue(ZYDIS_REGISTER_EFLAGS, inputFlags.value_or(0));
 
 #if defined(_DEBU) && 0
     if (iteration >= kReportInputsThreshold)
@@ -678,7 +706,7 @@ static bool checkOutputs(
         testEntry.outputRegs[bigReg] = RegTestData{ regData.begin(), regData.begin() + (bigSize / 8) };
     }
 
-    if (getFlagsModified(instr) != 0)
+    if (getFlagsModified(instr) != 0 || getFlagsSet0(instr) != 0 || getFlagsSet1(instr) != 0)
     {
         testEntry.outputFlags = ctx.getRegValue<uint32_t>(ZYDIS_REGISTER_EFLAGS);
 
@@ -939,7 +967,7 @@ static bool serializeTestEntries(ZydisMachineMode mode, ZydisMnemonic mnemonic, 
                 std::print(file, "{}flags:#{}", numIn > 0 ? "," : "", Utils::hexEncode(flagsHex));
             }
 
-            std::print(file, "{}out:", numIn > 0 ? "|" : "");
+            std::print(file, "{}out:", "|");
             auto numOut = 0;
             for (const auto& [reg, data] : entry.outputRegs)
             {
@@ -1057,6 +1085,7 @@ static void generateInstrTests(ZydisMachineMode mode, ZydisMnemonic mnemonic)
 
 int main()
 {
+    // clang-format off
     const ZydisMnemonic mnemonics[] = {
         ZYDIS_MNEMONIC_AAA,
         ZYDIS_MNEMONIC_AAD,
@@ -2854,11 +2883,12 @@ int main()
         // ZYDIS_MNEMONIC_JZ,
         ZYDIS_MNEMONIC_XTEST,
     };
+    // clang-format on
 
     const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
 
-#ifdef _DEBUG
-    generateInstrTests(mode, ZYDIS_MNEMONIC_CVTDQ2PD);
+#if 0
+    generateInstrTests(mode, ZYDIS_MNEMONIC_JB);
 #else
     for (auto mnemonic : mnemonics)
     {

@@ -6,12 +6,12 @@ BUILD_GMOCK = false
 
 [fetch-content.sfl]
 git = "https://github.com/slavenf/sfl-library"
-tag = "1.8.1"
+tag = "2.0.0"
 system = true
 
 [fetch-content.zydis]
 git = "https://github.com/zyantific/zydis"
-tag = "bd73bc03b0aacaa89c9c203b9b43cd08f1b1843b"
+tag = "f2ad85f92fc6645a642053882eaf0e95693977e9"
 system = true
 
 [fetch-content.GTest]

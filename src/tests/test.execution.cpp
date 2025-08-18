@@ -22,6 +22,35 @@ namespace x86Tester::tests
     static constexpr auto kCCBytes = std::to_array<std::uint8_t>(
         { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC });
 
+    TEST(ExecutionTest, add_al_al)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 2>{
+            0x00,
+            0xC0,
+        };
+
+        auto ctx = Execution::ScopedContext(mode, instrBytes);
+        ASSERT_TRUE(ctx);
+
+        constexpr auto raxValue = std::to_array<std::uint8_t>({ 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC });
+
+        ctx.setRegBytes(ZYDIS_REGISTER_RAX, raxValue);
+
+        ASSERT_TRUE(ctx.execute());
+
+        const auto raxOutput = ctx.getRegBytes(ZYDIS_REGISTER_RAX);
+
+        const auto expectedRaxValue = std::to_array<std::uint8_t>({ 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC });
+
+        ASSERT_TRUE(std::ranges::equal(raxOutput, expectedRaxValue));
+
+        const auto flagsOutput = ctx.getRegBytes(ZYDIS_REGISTER_EFLAGS);
+        const auto expectedFlags = std::to_array<std::uint8_t>({ 0x46, 0x02, 0x00, 0x00 });
+
+        ASSERT_TRUE(std::ranges::equal(flagsOutput, expectedFlags));
+    }
+
     TEST(ExecutionTest, cvtdq2pd_xmm3_xmm0)
     {
         const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;

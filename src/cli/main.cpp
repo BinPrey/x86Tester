@@ -91,6 +91,7 @@ static sfl::small_vector<ExceptionType, 5> getExceptions(const ZydisDisassembled
     switch (instr.info.mnemonic)
     {
         case ZYDIS_MNEMONIC_DIV:
+        case ZYDIS_MNEMONIC_IDIV:
             // #DE
             res.push_back(ExceptionType::DivideError);
             res.push_back(ExceptionType::IntegerOverflow);
@@ -858,7 +859,7 @@ static void testInstruction(ZydisMachineMode mode, InstrTestGroup& testCase)
 
         if (illegalInstr)
         {
-            Logging::println("Illegal instruction: {}", instr.text);
+            //Logging::println("Illegal instruction: {}", instr.text);
             testCase.illegalInstruction = true;
             break;
         }
@@ -2887,8 +2888,8 @@ int main()
 
     const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
 
-#if 0
-    generateInstrTests(mode, ZYDIS_MNEMONIC_JB);
+#if 1
+    generateInstrTests(mode, ZYDIS_MNEMONIC_IDIV);
 #else
     for (auto mnemonic : mnemonics)
     {

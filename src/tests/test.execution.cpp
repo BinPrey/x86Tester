@@ -75,4 +75,28 @@ namespace x86Tester::tests
         ASSERT_TRUE(std::ranges::equal(xmm3Value, expectedXmm3Value));
     }
 
+    TEST(ExecutionTest, idiv_ah)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 2>{
+            0xF6,
+            0xFC,
+        };
+
+        auto ctx = Execution::ScopedContext(mode, instrBytes);
+        ASSERT_TRUE(ctx);
+
+        constexpr auto raxValue = std::to_array<std::uint8_t>({ 0x00, 0x08, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC });
+
+        ctx.setRegBytes(ZYDIS_REGISTER_RAX, raxValue);
+
+        ASSERT_TRUE(ctx.execute());
+
+        const auto raxOutput = ctx.getRegBytes(ZYDIS_REGISTER_RAX);
+
+        ASSERT_EQ(std::ranges::equal(raxOutput, raxValue), true);
+
+        ASSERT_EQ(ctx.getExecutionStatus(), Execution::ExecutionStatus::ExceptionIntOverflow);
+    }
+
 } // namespace x86Tester::tests

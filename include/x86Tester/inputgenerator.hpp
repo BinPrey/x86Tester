@@ -44,6 +44,17 @@ namespace x86Tester::Generator
                 }
             }
 
+            // Add with single bit cleared (all bits set except one), e.g. signed MAX, needed to
+            // trigger single-operand overflow such as INC of the largest positive value.
+            {
+                for (std::size_t i = 0; i < sizeof(T) * 8; i++)
+                {
+                    T value = ~T{ 0 };
+                    value &= ~(T{ 1 } << i);
+                    numbers.push_back(value);
+                }
+            }
+
             // Add with every 3. bit set.
             {
                 T value{};
@@ -197,6 +208,43 @@ namespace x86Tester::Generator
                 res.push_back(std::move(bytes));
             }
 
+            // Sign bit set in each lane (8/16/32/64-bit) - the signed minimum per lane, needed
+            // for results like PMADDWD reaching 2^31 only when both words are -32768.
+            for (const std::size_t laneBits : { std::size_t{ 8 }, std::size_t{ 16 }, std::size_t{ 32 }, std::size_t{ 64 } })
+            {
+                std::vector<std::uint8_t> bytes(16, 0);
+                for (std::size_t bit = laneBits - 1; bit < 128; bit += laneBits)
+                    bytes[bit / 8] |= static_cast<std::uint8_t>(1u << (bit % 8));
+                res.push_back(std::move(bytes));
+            }
+
+            // Low qword set to each small count (0-63): exercises every variable shift amount,
+            // including the self-shift case where the count and shifted data are one register.
+            for (std::uint64_t c = 0; c <= 63; ++c)
+            {
+                std::vector<std::uint8_t> bytes(16, 0);
+                std::memcpy(bytes.data(), &c, sizeof(c));
+                res.push_back(std::move(bytes));
+            }
+
+            // Small count broadcast to every 32-bit lane, then every 64-bit lane: per-lane
+            // variable shifts (e.g. vpsllvd/vpsllvq by a register equal to the data) need each
+            // lane, not just the low one, to take each small count.
+            for (std::uint32_t c = 0; c <= 31; ++c)
+            {
+                std::vector<std::uint8_t> bytes(16, 0);
+                for (std::size_t lane = 0; lane < 4; ++lane)
+                    std::memcpy(bytes.data() + lane * 4, &c, sizeof(c));
+                res.push_back(std::move(bytes));
+            }
+            for (std::uint64_t c = 0; c <= 63; ++c)
+            {
+                std::vector<std::uint8_t> bytes(16, 0);
+                std::memcpy(bytes.data(), &c, sizeof(c));
+                std::memcpy(bytes.data() + 8, &c, sizeof(c));
+                res.push_back(std::move(bytes));
+            }
+
             // 0-31 set.
             {
                 std::vector<std::uint8_t> bytes(16, 0);
@@ -338,6 +386,65 @@ namespace x86Tester::Generator
             }
         }
 
+        inline std::vector<std::uint8_t> doubleToExtended80(double d)
+        {
+            std::uint64_t bits{};
+            std::memcpy(&bits, &d, sizeof(bits));
+            const std::uint64_t sign = (bits >> 63) & 1;
+            const std::uint64_t exp = (bits >> 52) & 0x7FF;
+            const std::uint64_t frac = bits & 0xFFFFFFFFFFFFFull;
+
+            std::uint64_t mant{};
+            std::uint16_t eexp{};
+            if (exp == 0)
+            {
+                eexp = 0;
+                mant = 0;
+            }
+            else if (exp == 0x7FF)
+            {
+                eexp = 0x7FFF;
+                mant = 0x8000000000000000ull | (frac << 11);
+            }
+            else
+            {
+                eexp = static_cast<std::uint16_t>(exp - 1023 + 16383);
+                mant = 0x8000000000000000ull | (frac << 11);
+            }
+
+            const std::uint16_t hi = static_cast<std::uint16_t>(eexp | (sign << 15));
+            std::vector<std::uint8_t> bytes(10);
+            std::memcpy(bytes.data(), &mant, sizeof(mant));
+            std::memcpy(bytes.data() + 8, &hi, sizeof(hi));
+            return bytes;
+        }
+
+        static std::vector<std::vector<std::uint8_t>> generateExtended80()
+        {
+            std::vector<std::vector<std::uint8_t>> res;
+
+            constexpr double vals[] = {
+                0.0, 1.0, -1.0, 0.5, -0.5, 0.25, 0.75, -0.75, 2.0, -2.0, 3.14159265358979, 2.71828182845905,
+                1e10, 1e-10, 1e100, 1e-100, 0.9999999, -0.9999999,
+            };
+            for (const double d : vals)
+                res.push_back(doubleToExtended80(d));
+
+            // Single-bit-set patterns and the extremes.
+            for (std::size_t i = 0; i < 80; ++i)
+            {
+                std::vector<std::uint8_t> b(10, 0);
+                b[i / 8] |= static_cast<std::uint8_t>(1u << (i % 8));
+                res.push_back(std::move(b));
+            }
+            res.push_back(std::vector<std::uint8_t>(10, 0xFF));
+            res.push_back(std::vector<std::uint8_t>(10, 0x00));
+
+            std::sort(res.begin(), res.end());
+            res.erase(std::unique(res.begin(), res.end()), res.end());
+            return res;
+        }
+
         static const auto kMagicNumbers8b = generateIntegers<std::int8_t>();
 
         static const auto kMagicNumbers16b = generateIntegers<std::int16_t>();
@@ -347,6 +454,8 @@ namespace x86Tester::Generator
         static const auto kMagicNumbers64b = generateIntegers<std::int64_t>();
 
         static const auto kMagicNumbers128b = generateXmmNumbers();
+
+        static const auto kMagicNumbers80b = generateExtended80();
 
     } // namespace Detail
 
@@ -532,6 +641,14 @@ namespace x86Tester::Generator
             {
                 const auto valueBytes = Detail::kMagicNumbers128b[_counter % std::size(Detail::kMagicNumbers128b)];
                 if (++_counter >= std::size(Detail::kMagicNumbers128b))
+                    nextStrat = true;
+
+                std::copy(valueBytes.begin(), valueBytes.end(), _data.begin());
+            }
+            else if (_maxBits == 80)
+            {
+                const auto valueBytes = Detail::kMagicNumbers80b[_counter % std::size(Detail::kMagicNumbers80b)];
+                if (++_counter >= std::size(Detail::kMagicNumbers80b))
                     nextStrat = true;
 
                 std::copy(valueBytes.begin(), valueBytes.end(), _data.begin());

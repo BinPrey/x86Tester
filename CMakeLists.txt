@@ -153,7 +153,8 @@ set(x86Tester-generator_SOURCES
 	"include/x86Tester/basegenerator.hpp"
 	"include/x86Tester/generator.hpp"
 	"include/x86Tester/inputgenerator.hpp"
-	"src/generator/generator.cpp"
+	"src/generator/instrgenerator.cpp"
+	"src/generator/matrixgenerator.cpp"
 )
 
 add_library(x86Tester-generator STATIC)
@@ -177,6 +178,7 @@ target_include_directories(x86Tester-generator PRIVATE
 
 target_link_libraries(x86Tester-generator PUBLIC
 	x86Tester::core
+	x86Tester::execution
 )
 
 set_target_properties(x86Tester-generator PROPERTIES

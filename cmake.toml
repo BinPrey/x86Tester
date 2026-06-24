@@ -47,12 +47,12 @@ PROJECT_LABEL = "execution"
 [target.x86Tester-generator]
 type = "static"
 alias = "x86Tester::generator"
-sources = ["src/generator/generator.cpp"]
+sources = ["src/generator/instrgenerator.cpp", "src/generator/matrixgenerator.cpp"]
 headers = ["include/x86Tester/generator.hpp", "include/x86Tester/basegenerator.hpp", "include/x86Tester/inputgenerator.hpp"]
 private-include-directories = ["src/generator", "include/x86Tester"]
 include-directories = ["include"]
 compile-features = ["cxx_std_23"]
-link-libraries = ["x86Tester::core"]
+link-libraries = ["x86Tester::core", "x86Tester::execution"]
 
 [target.x86Tester-generator.properties]
 PROJECT_LABEL = "generator"

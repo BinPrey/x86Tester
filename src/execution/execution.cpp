@@ -3,6 +3,7 @@
 #include <Zydis/Disassembler.h>
 #include <Zydis/Encoder.h>
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <intrin.h>
 #include <print>
@@ -31,6 +32,7 @@ namespace x86Tester::Execution
         CONTEXT threadContext{};
         DEBUG_EVENT dbgEvent{};
         ExecutionStatus status{};
+        DWORD contextFlags{ CONTEXT_ALL };
     };
 
     static std::filesystem::path getExecutingPath()
@@ -76,6 +78,95 @@ namespace x86Tester::Execution
         }
     }
 
+    std::span<std::uint8_t> getContextReg(Context* ctx, ZydisRegister reg);
+
+    static std::uint64_t readRegisterValue(Context* ctx, ZydisRegister reg, ZyanU16 sizeBits)
+    {
+        const auto root = ZydisRegisterGetLargestEnclosing(ZYDIS_MACHINE_MODE_LONG_64, reg);
+        if (root == ZYDIS_REGISTER_NONE)
+            return 0;
+
+        const auto bytes = getContextReg(ctx, root);
+        if (bytes.empty())
+            return 0;
+
+        std::size_t offset = 0;
+        if (reg == ZYDIS_REGISTER_AH || reg == ZYDIS_REGISTER_BH || reg == ZYDIS_REGISTER_CH
+            || reg == ZYDIS_REGISTER_DH)
+            offset = 1;
+
+        std::size_t nbytes = sizeBits / 8;
+        if (nbytes == 0 || nbytes > 8)
+            nbytes = 8;
+        if (offset + nbytes > bytes.size())
+            return 0;
+
+        std::uint64_t value = 0;
+        std::memcpy(&value, bytes.data() + offset, nbytes);
+        return value;
+    }
+
+    static std::uint64_t computeMemoryAddress(Context* ctx, const ZydisDecodedOperand& op)
+    {
+        std::uint64_t addr = static_cast<std::uint64_t>(op.mem.disp.value);
+        if (op.mem.base != ZYDIS_REGISTER_NONE && op.mem.base != ZYDIS_REGISTER_RIP
+            && op.mem.base != ZYDIS_REGISTER_EIP)
+            addr += readRegisterValue(ctx, op.mem.base, 64);
+        if (op.mem.index != ZYDIS_REGISTER_NONE)
+            addr += readRegisterValue(ctx, op.mem.index, 64) * op.mem.scale;
+        return addr;
+    }
+
+    static ExecutionStatus classifyDivideError(Context* ctx, std::uintptr_t faultAddress)
+    {
+        std::uint8_t buffer[16]{};
+        SIZE_T read = 0;
+        if (!ReadProcessMemory(
+                ctx->processInfo.hProcess, reinterpret_cast<void*>(faultAddress), buffer, sizeof(buffer), &read)
+            || read == 0)
+            return ExecutionStatus::ExceptionIntDivideError;
+
+        ZydisDisassembledInstruction instr;
+        if (!ZYAN_SUCCESS(ZydisDisassembleIntel(ZYDIS_MACHINE_MODE_LONG_64, faultAddress, buffer, read, &instr)))
+            return ExecutionStatus::ExceptionIntDivideError;
+
+        if (instr.info.mnemonic != ZYDIS_MNEMONIC_DIV && instr.info.mnemonic != ZYDIS_MNEMONIC_IDIV)
+            return ExecutionStatus::ExceptionIntDivideError;
+
+        if (instr.info.operand_count_visible == 0)
+            return ExecutionStatus::ExceptionIntDivideError;
+
+        const auto& divisor = instr.operands[0];
+
+        std::uint64_t value = 0;
+        bool haveValue = false;
+
+        if (divisor.type == ZYDIS_OPERAND_TYPE_REGISTER)
+        {
+            value = readRegisterValue(ctx, divisor.reg.value, divisor.size);
+            haveValue = true;
+        }
+        else if (divisor.type == ZYDIS_OPERAND_TYPE_MEMORY)
+        {
+            const auto addr = computeMemoryAddress(ctx, divisor);
+            const std::size_t nbytes = divisor.size / 8;
+            std::uint64_t mem = 0;
+            SIZE_T r = 0;
+            if (nbytes >= 1 && nbytes <= 8
+                && ReadProcessMemory(ctx->processInfo.hProcess, reinterpret_cast<void*>(addr), &mem, nbytes, &r)
+                && r == nbytes)
+            {
+                value = mem;
+                haveValue = true;
+            }
+        }
+
+        if (haveValue && value != 0)
+            return ExecutionStatus::ExceptionIntOverflow;
+
+        return ExecutionStatus::ExceptionIntDivideError;
+    }
+
     static DebugStatus handleException(Context* ctx, const EXCEPTION_RECORD& record)
     {
         const auto exceptionAddress = reinterpret_cast<uintptr_t>(record.ExceptionAddress);
@@ -101,7 +192,7 @@ namespace x86Tester::Execution
         }
         else if (record.ExceptionCode == EXCEPTION_INT_DIVIDE_BY_ZERO)
         {
-            ctx->status = ExecutionStatus::ExceptionIntDivideError;
+            ctx->status = classifyDivideError(ctx, exceptionAddress);
             return DebugStatus::Faulted;
         }
         else if (record.ExceptionCode == EXCEPTION_INT_OVERFLOW)
@@ -115,14 +206,14 @@ namespace x86Tester::Execution
             return DebugStatus::Faulted;
         }
 
-        std::print("Exception code: {:X}\n", record.ExceptionCode);
-        std::print("Exception flags: {:X}\n", record.ExceptionFlags);
-        std::print("Exception address: {:X}\n", exceptionAddress);
-        std::print("Number of parameters: {}\n", record.NumberParameters);
-        for (DWORD i = 0; i < record.NumberParameters; ++i)
-        {
-            std::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
-        }
+        // std::print("Exception code: {:X}\n", record.ExceptionCode);
+        // std::print("Exception flags: {:X}\n", record.ExceptionFlags);
+        // std::print("Exception address: {:X}\n", exceptionAddress);
+        // std::print("Number of parameters: {}\n", record.NumberParameters);
+        // for (DWORD i = 0; i < record.NumberParameters; ++i)
+        //{
+        //     std::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
+        // }
 
         if (ctx->codeBase >= exceptionAddress && exceptionAddress < ctx->codeBase + ctx->codeSize)
         {
@@ -343,6 +434,35 @@ namespace x86Tester::Execution
         return true;
     }
 
+    static DWORD computeContextFlags(ZydisMachineMode mode, std::span<const std::uint8_t> code)
+    {
+        ZydisDisassembledInstruction instr;
+        if (!ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, code.data(), code.size(), &instr)))
+            return CONTEXT_ALL;
+
+        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+        {
+            const auto& op = instr.operands[i];
+            if (op.type != ZYDIS_OPERAND_TYPE_REGISTER)
+                continue;
+
+            switch (ZydisRegisterGetClass(op.reg.value))
+            {
+                case ZYDIS_REGCLASS_GPR8:
+                case ZYDIS_REGCLASS_GPR16:
+                case ZYDIS_REGCLASS_GPR32:
+                case ZYDIS_REGCLASS_GPR64:
+                case ZYDIS_REGCLASS_FLAGS:
+                case ZYDIS_REGCLASS_IP:
+                    break;
+                default:
+                    return CONTEXT_ALL;
+            }
+        }
+
+        return CONTEXT_CONTROL | CONTEXT_INTEGER;
+    }
+
     Context* prepare(ZydisMachineMode mode, std::span<const std::uint8_t> code)
     {
         auto ctx = new Context{};
@@ -370,6 +490,8 @@ namespace x86Tester::Execution
             delete ctx;
             return nullptr;
         }
+
+        ctx->contextFlags = computeContextFlags(mode, code);
 
         return ctx;
     }
@@ -504,8 +626,16 @@ namespace x86Tester::Execution
 
     bool execute(Context* ctx)
     {
-        ctx->threadContext.ContextFlags = CONTEXT_ALL;
+        ctx->status = ExecutionStatus::Idle;
+
+        ctx->threadContext.ContextFlags = ctx->contextFlags;
         ctx->threadContext.Rip = ctx->codeBase + 1;
+
+        // Mark all x87 registers valid (non-empty) and force the stack top to 0, so in-place
+        // x87 ops read their operands from the physical registers the harness mapped ST(i) to.
+        // Without this the default FPU state tags every register empty and stack ops fault.
+        ctx->threadContext.FltSave.TagWord = 0xFF;
+        ctx->threadContext.FltSave.StatusWord &= 0xC7FF;
 
         if (SetThreadContext(ctx->hThread, &ctx->threadContext) == FALSE)
         {
@@ -540,7 +670,7 @@ namespace x86Tester::Execution
                 break;
         }
 
-        ctx->threadContext.ContextFlags = CONTEXT_ALL;
+        ctx->threadContext.ContextFlags = ctx->contextFlags;
         if (!GetThreadContext(ctx->hThread, &ctx->threadContext))
         {
             return false;

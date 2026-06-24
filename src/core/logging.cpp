@@ -57,9 +57,9 @@ namespace x86Tester::Logging
         _inProgress = false;
 
         auto endTime = clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::seconds>(endTime - _startTime);
+        auto seconds = std::chrono::duration<double>(endTime - _startTime).count();
         std::println(
-            "\r{}, completed in {}.{:{}}", _progressName, duration, "",
+            "\r{}, completed in {:.2f}s.{:{}}", _progressName, seconds, "",
             _progressName.size() < 72 ? 72 - _progressName.size() : 1);
     }
 

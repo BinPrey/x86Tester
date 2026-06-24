@@ -14,6 +14,7 @@ extern "C" {
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <intrin.h>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -789,6 +790,32 @@ namespace x86Tester::Generator
         return true;
     }
 
+    bool isSupportedIsaExt(ZydisISAExt isaExt)
+    {
+        static const std::uint32_t extendedEcx = []() -> std::uint32_t {
+            int regs[4] = {};
+            __cpuid(regs, 0x80000000);
+            if (static_cast<std::uint32_t>(regs[0]) < 0x80000001u)
+                return 0;
+            __cpuidex(regs, 0x80000001, 0);
+            return static_cast<std::uint32_t>(regs[2]);
+        }();
+
+        switch (isaExt)
+        {
+            case ZYDIS_ISA_EXT_SSE4A:
+                return (extendedEcx & (1u << 6)) != 0;
+            case ZYDIS_ISA_EXT_XOP:
+                return (extendedEcx & (1u << 11)) != 0;
+            case ZYDIS_ISA_EXT_FMA4:
+                return (extendedEcx & (1u << 16)) != 0;
+            case ZYDIS_ISA_EXT_TBM:
+                return (extendedEcx & (1u << 21)) != 0;
+            default:
+                return true;
+        }
+    }
+
     std::vector<MnemonicInfo> buildMnemonicIndex(ZydisMachineMode mode)
     {
         std::vector<MnemonicInfo> res(ZYDIS_MNEMONIC_MAX_VALUE + 1);
@@ -1148,10 +1175,7 @@ namespace x86Tester::Generator
         if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
             return false;
 
-        // XOP/FMA4/TBM are AMD Bulldozer-era extensions removed from all current CPUs; they always
-        // raise #UD, so testing them just wastes time producing nothing.
-        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_XOP || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_FMA4
-            || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_TBM)
+        if (!isSupportedIsaExt(instr.info.meta.isa_ext))
             return false;
 
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)

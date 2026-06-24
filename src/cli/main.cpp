@@ -223,7 +223,6 @@ static std::optional<std::size_t> generateInstrTests(
     std::vector<InstrTestGroup> testGroups;
     std::mutex mtx;
     std::atomic<size_t> curInstr = 0;
-    std::atomic<size_t> illegalInstrs = 0;
 
     instrs.forEachParallel([&](auto&& instrData) {
         //
@@ -232,10 +231,6 @@ static std::optional<std::size_t> generateInstrTests(
         {
             std::lock_guard lock(mtx);
             testGroups.push_back(std::move(testCase));
-        }
-        else if (testCase.illegalInstruction)
-        {
-            ++illegalInstrs;
         }
         Logging::updateProgress(++curInstr, numInstrs);
     });
@@ -286,12 +281,6 @@ static std::optional<std::size_t> generateInstrTests(
     {
         serializeTestEntries(mode, groupMnemonic, { testGroups }, outputPath);
     }
-
-    // An instruction that decodes only to #UD (an extension this CPU lacks, e.g. SSE4a on an Intel
-    // host) produces no test cases. Write an empty marker file so the result is cached and the
-    // encodings are not rebuilt and re-executed on every subsequent run.
-    if (totalTestEntries == 0 && illegalInstrs > 0)
-        serializeTestEntries(mode, mnemonic, {}, outputPath);
 
     return totalTestEntries;
 }
@@ -492,10 +481,7 @@ int main(int argc, char** argv)
         // destabilize generation; never build them.
         if (m == ZYDIS_MNEMONIC_UD0 || m == ZYDIS_MNEMONIC_UD1 || m == ZYDIS_MNEMONIC_UD2)
             continue;
-        // XOP/FMA4/TBM (AMD Bulldozer-era) are gone from current CPUs and only ever #UD; skip them
-        // so they aren't built and re-executed every run.
-        if (index[m].isaExt == ZYDIS_ISA_EXT_XOP || index[m].isaExt == ZYDIS_ISA_EXT_FMA4
-            || index[m].isaExt == ZYDIS_ISA_EXT_TBM)
+        if (!Generator::isSupportedIsaExt(index[m].isaExt))
             continue;
         finalList.push_back(m);
     }

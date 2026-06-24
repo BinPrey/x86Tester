@@ -34,6 +34,8 @@ namespace x86Tester::Generator
 
     bool isSupportedCategory(ZydisInstructionCategory category);
 
+    bool isSupportedIsaExt(ZydisISAExt isaExt);
+
     struct MnemonicInfo
     {
         bool encodable{};

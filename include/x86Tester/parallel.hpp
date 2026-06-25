@@ -1,6 +1,6 @@
 #pragma once
 
-#include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <iterator>
 #include <thread>
@@ -29,19 +29,22 @@ namespace x86Tester
             return;
         }
 
-        const std::size_t chunk = (total + workers - 1) / workers;
+        std::atomic<std::size_t> next{ 0 };
 
         std::vector<std::thread> threads;
         threads.reserve(workers);
 
-        for (std::size_t begin = 0; begin < total; begin += chunk)
+        for (std::size_t w = 0; w < workers; ++w)
         {
-            const std::size_t end = (begin + chunk < total) ? (begin + chunk) : total;
-            threads.emplace_back([first, begin, end, &fn]() {
-                Iterator it = first;
-                std::advance(it, static_cast<typename std::iterator_traits<Iterator>::difference_type>(begin));
-                for (std::size_t i = begin; i < end; ++i, ++it)
-                    fn(*it);
+            threads.emplace_back([first, total, &next, &fn]() {
+                using diff = typename std::iterator_traits<Iterator>::difference_type;
+                for (;;)
+                {
+                    const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                    if (i >= total)
+                        break;
+                    fn(*std::next(first, static_cast<diff>(i)));
+                }
             });
         }
 

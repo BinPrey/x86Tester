@@ -10,7 +10,7 @@ system = true
 
 [fetch-content.sfl]
 git = "https://github.com/slavenf/sfl-library"
-tag = "2.0.0"
+tag = "2.2.0"
 system = true
 
 [fetch-content.zydis]

@@ -23,12 +23,12 @@ FetchContent_Declare(fmt SYSTEM
 )
 FetchContent_MakeAvailable(fmt)
 
-message(STATUS "Fetching sfl (2.0.0)...")
+message(STATUS "Fetching sfl (2.2.0)...")
 FetchContent_Declare(sfl SYSTEM
 	GIT_REPOSITORY
 		"https://github.com/slavenf/sfl-library"
 	GIT_TAG
-		2.0.0
+		2.2.0
 )
 FetchContent_MakeAvailable(sfl)
 

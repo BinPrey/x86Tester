@@ -18,6 +18,7 @@
 #include <sfl/small_vector.hpp>
 #include <sfl/static_vector.hpp>
 #include <sfl/vector.hpp>
+#include <x86Tester/cpuid.hpp>
 #include <x86Tester/generator.hpp>
 #include <x86Tester/logging.hpp>
 
@@ -494,6 +495,10 @@ int main(int argc, char** argv)
         std::print("Total: {} mnemonics\n", finalList.size());
         return EXIT_SUCCESS;
     }
+
+    const auto& cpu = Cpuid::getCpuInfo();
+    outputPath /= std::format("{}_f{}m{}s{}", cpu.name, cpu.family, cpu.model, cpu.stepping);
+    std::print("Output directory: {}\n", outputPath.string());
 
     Generator::setStopOnImpossible(stopOnImpossible);
 

@@ -86,7 +86,9 @@ endif()
 # Target: x86Tester-core
 set(x86Tester-core_SOURCES
 	cmake.toml
+	"include/x86Tester/cpuid.hpp"
 	"include/x86Tester/logging.hpp"
+	"src/core/cpuid.cpp"
 	"src/core/logging.cpp"
 )
 

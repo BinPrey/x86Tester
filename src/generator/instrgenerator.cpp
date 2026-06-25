@@ -4,6 +4,8 @@
 
 #include "genshared.hpp"
 
+#include <x86Tester/cpuid.hpp>
+
 #include <Zydis/Disassembler.h>
 #include <Zydis/Encoder.h>
 extern "C" {
@@ -14,11 +16,6 @@ extern "C" {
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#ifdef _WIN32
-#    include <intrin.h>
-#else
-#    include <cpuid.h>
-#endif
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -796,34 +793,18 @@ namespace x86Tester::Generator
 
     bool isSupportedIsaExt(ZydisISAExt isaExt)
     {
-        static const std::uint32_t extendedEcx = []() -> std::uint32_t {
-#ifdef _WIN32
-            int regs[4] = {};
-            __cpuid(regs, 0x80000000);
-            if (static_cast<std::uint32_t>(regs[0]) < 0x80000001u)
-                return 0;
-            __cpuidex(regs, 0x80000001, 0);
-            return static_cast<std::uint32_t>(regs[2]);
-#else
-            unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
-            if (!__get_cpuid(0x80000000u, &eax, &ebx, &ecx, &edx) || eax < 0x80000001u)
-                return 0;
-            if (!__get_cpuid(0x80000001u, &eax, &ebx, &ecx, &edx))
-                return 0;
-            return ecx;
-#endif
-        }();
+        const auto& info = Cpuid::getCpuInfo();
 
         switch (isaExt)
         {
             case ZYDIS_ISA_EXT_SSE4A:
-                return (extendedEcx & (1u << 6)) != 0;
+                return info.sse4a;
             case ZYDIS_ISA_EXT_XOP:
-                return (extendedEcx & (1u << 11)) != 0;
+                return info.xop;
             case ZYDIS_ISA_EXT_FMA4:
-                return (extendedEcx & (1u << 16)) != 0;
+                return info.fma4;
             case ZYDIS_ISA_EXT_TBM:
-                return (extendedEcx & (1u << 21)) != 0;
+                return info.tbm;
             default:
                 return true;
         }

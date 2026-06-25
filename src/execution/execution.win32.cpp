@@ -242,6 +242,21 @@ namespace x86Tester::Execution
         return DebugStatus::Continue;
     }
 
+    static HANDLE killOnCloseJob()
+    {
+        static HANDLE job = []() -> HANDLE {
+            HANDLE handle = CreateJobObjectW(nullptr, nullptr);
+            if (handle != nullptr)
+            {
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                SetInformationJobObject(handle, JobObjectExtendedLimitInformation, &info, sizeof(info));
+            }
+            return handle;
+        }();
+        return job;
+    }
+
     static bool spawnProcess(Context* ctx)
     {
         ctx->startupInfo.cb = sizeof(ctx->startupInfo);
@@ -258,6 +273,9 @@ namespace x86Tester::Execution
         {
             return false;
         }
+
+        if (HANDLE job = killOnCloseJob(); job != nullptr)
+            AssignProcessToJobObject(job, ctx->processInfo.hProcess);
 
         // Consume all debug events until the first breakpoint.
         auto& dbgEvent = ctx->dbgEvent;

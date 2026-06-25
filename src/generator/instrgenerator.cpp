@@ -817,7 +817,7 @@ namespace x86Tester::Generator
             if (res[mnemonic].encodable)
                 continue;
 
-            for (int attempt = 0; attempt < 64; ++attempt)
+            for (int attempt = 0; attempt < 65536; ++attempt)
             {
                 const auto encodeRes = checkEncode(instr.current(), mode);
                 if (encodeRes.status == ZYAN_STATUS_SUCCESS)

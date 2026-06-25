@@ -890,6 +890,24 @@ namespace x86Tester::Generator
     {
         std::uint32_t flags = 0;
         flags |= instr.info.cpu_flags->tested;
+
+        switch (instr.info.mnemonic)
+        {
+            case ZYDIS_MNEMONIC_SHL:
+            case ZYDIS_MNEMONIC_SHR:
+            case ZYDIS_MNEMONIC_SAR:
+            case ZYDIS_MNEMONIC_ROL:
+            case ZYDIS_MNEMONIC_ROR:
+            case ZYDIS_MNEMONIC_RCL:
+            case ZYDIS_MNEMONIC_RCR:
+            case ZYDIS_MNEMONIC_SHLD:
+            case ZYDIS_MNEMONIC_SHRD:
+                flags |= instr.info.cpu_flags->modified;
+                break;
+            default:
+                break;
+        }
+
         return flags;
     }
 

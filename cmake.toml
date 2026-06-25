@@ -11,7 +11,7 @@ name = "x86Tester"
 condition = "windows"
 type = "executable"
 sources = ["src/sandbox/main.cpp"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 # Disable runtime checks
 msvc.compile-options = ["/Ob2", "/Oi"]
 msvc.link-options = ["/NODEFAULTLIB", "/ENTRY:rawEntry", "/DYNAMICBASE:NO", "/BASE:0x70000000"]
@@ -25,7 +25,7 @@ alias = "x86Tester::core"
 sources = ["src/core/logging.cpp", "src/core/cpuid.cpp"]
 headers = ["include/x86Tester/logging.hpp", "include/x86Tester/cpuid.hpp", "include/x86Tester/parallel.hpp"]
 link-libraries = ["Zydis", "sfl", "fmt::fmt"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 include-directories = ["include"]
 private-include-directories = ["src/core"]
 
@@ -41,7 +41,7 @@ linux.sources = ["src/execution/execution.linux.cpp"]
 headers = ["include/x86Tester/execution.hpp"]
 private-include-directories = ["src/execution", "include/x86Tester"]
 include-directories = ["include"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 link-libraries = ["x86Tester::core"]
 
 [target.x86Tester-execution.properties]
@@ -54,7 +54,7 @@ sources = ["src/generator/instrgenerator.cpp", "src/generator/matrixgenerator.cp
 headers = ["include/x86Tester/generator.hpp", "include/x86Tester/basegenerator.hpp", "include/x86Tester/inputgenerator.hpp"]
 private-include-directories = ["src/generator", "include/x86Tester"]
 include-directories = ["include"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 link-libraries = ["x86Tester::core", "x86Tester::execution"]
 
 [target.x86Tester-generator.properties]
@@ -64,7 +64,7 @@ PROJECT_LABEL = "generator"
 type = "executable"
 sources = ["src/cli/main.cpp"]
 headers = ["src/cli/utils.hpp"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 private-link-libraries = ["x86Tester::core", "x86Tester::generator", "x86Tester::execution"]
 
 [target.x86Tester-cli.properties]
@@ -73,7 +73,7 @@ PROJECT_LABEL = "cli"
 [target.x86Tester-tests]
 type = "executable"
 sources = ["src/tests/main.cpp", "src/tests/test.execution.cpp", "src/tests/test.parallel.cpp"]
-compile-features = ["cxx_std_23"]
+compile-features = ["cxx_std_20"]
 private-link-libraries = ["x86Tester::core", "x86Tester::generator", "x86Tester::execution", "GTest::gtest"]
 
 [target.x86Tester-tests.properties]

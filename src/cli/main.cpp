@@ -1,6 +1,7 @@
 #include "utils.hpp"
 
 #include <Zydis/Disassembler.h>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstring>

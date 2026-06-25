@@ -53,7 +53,7 @@ if(WIN32) # windows
 	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-sandbox_SOURCES})
 
 	target_compile_features(x86Tester-sandbox PRIVATE
-		cxx_std_23
+		cxx_std_20
 	)
 
 	if(MSVC) # msvc
@@ -100,7 +100,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-core_SOURCES})
 
 add_library(x86Tester::core ALIAS x86Tester-core)
 target_compile_features(x86Tester-core PUBLIC
-	cxx_std_23
+	cxx_std_20
 )
 
 target_include_directories(x86Tester-core PUBLIC
@@ -148,7 +148,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-execution_SOURCE
 
 add_library(x86Tester::execution ALIAS x86Tester-execution)
 target_compile_features(x86Tester-execution PUBLIC
-	cxx_std_23
+	cxx_std_20
 )
 
 target_include_directories(x86Tester-execution PUBLIC
@@ -186,7 +186,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-generator_SOURCE
 
 add_library(x86Tester::generator ALIAS x86Tester-generator)
 target_compile_features(x86Tester-generator PUBLIC
-	cxx_std_23
+	cxx_std_20
 )
 
 target_include_directories(x86Tester-generator PUBLIC
@@ -221,7 +221,7 @@ target_sources(x86Tester-cli PRIVATE ${x86Tester-cli_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-cli_SOURCES})
 
 target_compile_features(x86Tester-cli PRIVATE
-	cxx_std_23
+	cxx_std_20
 )
 
 target_link_libraries(x86Tester-cli PRIVATE
@@ -254,7 +254,7 @@ target_sources(x86Tester-tests PRIVATE ${x86Tester-tests_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-tests_SOURCES})
 
 target_compile_features(x86Tester-tests PRIVATE
-	cxx_std_23
+	cxx_std_20
 )
 
 target_link_libraries(x86Tester-tests PRIVATE

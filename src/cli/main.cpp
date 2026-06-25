@@ -3,6 +3,7 @@
 #include <Zydis/Disassembler.h>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>

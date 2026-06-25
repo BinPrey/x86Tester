@@ -2,7 +2,11 @@
 
 #include <chrono>
 #include <cstdio>
-#include <intrin.h>
+#ifdef _WIN32
+#    include <intrin.h>
+#else
+#    include <immintrin.h>
+#endif
 #include <iostream>
 #include <print>
 #include <span>

@@ -21,10 +21,14 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 	set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 	# Create a configure-time dependency on cmake.toml to improve IDE support
-	configure_file(cmake.toml cmake.toml COPYONLY)
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS cmake.toml)
 endif()
 
-project(x86Tester)
+project(x86Tester
+	LANGUAGES
+		C
+		CXX
+)
 
 # Subdirectory: thirdparty
 set(CMKR_CMAKE_FOLDER ${CMAKE_FOLDER})
@@ -37,46 +41,48 @@ add_subdirectory(thirdparty)
 set(CMAKE_FOLDER ${CMKR_CMAKE_FOLDER})
 
 # Target: x86Tester-sandbox
-set(x86Tester-sandbox_SOURCES
-	cmake.toml
-	"src/sandbox/main.cpp"
-)
-
-add_executable(x86Tester-sandbox)
-
-target_sources(x86Tester-sandbox PRIVATE ${x86Tester-sandbox_SOURCES})
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-sandbox_SOURCES})
-
-target_compile_features(x86Tester-sandbox PRIVATE
-	cxx_std_23
-)
-
-if(MSVC) # msvc
-	target_compile_options(x86Tester-sandbox PRIVATE
-		"/Ob2"
-		"/Oi"
+if(WIN32) # windows
+	set(x86Tester-sandbox_SOURCES
+		cmake.toml
+		"src/sandbox/main.cpp"
 	)
-endif()
 
-if(MSVC) # msvc
-	target_link_options(x86Tester-sandbox PRIVATE
-		"/NODEFAULTLIB"
-		"/ENTRY:rawEntry"
-		"/DYNAMICBASE:NO"
-		"/BASE:0x70000000"
+	add_executable(x86Tester-sandbox)
+
+	target_sources(x86Tester-sandbox PRIVATE ${x86Tester-sandbox_SOURCES})
+	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-sandbox_SOURCES})
+
+	target_compile_features(x86Tester-sandbox PRIVATE
+		cxx_std_23
 	)
+
+	if(MSVC) # msvc
+		target_compile_options(x86Tester-sandbox PRIVATE
+			"/Ob2"
+			"/Oi"
+		)
+	endif()
+
+	if(MSVC) # msvc
+		target_link_options(x86Tester-sandbox PRIVATE
+			"/NODEFAULTLIB"
+			"/ENTRY:rawEntry"
+			"/DYNAMICBASE:NO"
+			"/BASE:0x70000000"
+		)
+	endif()
+
+	set_target_properties(x86Tester-sandbox PROPERTIES
+		PROJECT_LABEL
+			sandbox
+	)
+
+	get_directory_property(CMKR_VS_STARTUP_PROJECT DIRECTORY ${PROJECT_SOURCE_DIR} DEFINITION VS_STARTUP_PROJECT)
+	if(NOT CMKR_VS_STARTUP_PROJECT)
+		set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT x86Tester-sandbox)
+	endif()
+
 endif()
-
-set_target_properties(x86Tester-sandbox PROPERTIES
-	PROJECT_LABEL
-		sandbox
-)
-
-get_directory_property(CMKR_VS_STARTUP_PROJECT DIRECTORY ${PROJECT_SOURCE_DIR} DEFINITION VS_STARTUP_PROJECT)
-if(NOT CMKR_VS_STARTUP_PROJECT)
-	set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT x86Tester-sandbox)
-endif()
-
 # Target: x86Tester-core
 set(x86Tester-core_SOURCES
 	cmake.toml
@@ -118,6 +124,18 @@ set(x86Tester-execution_SOURCES
 	"include/x86Tester/execution.hpp"
 	"src/execution/execution.cpp"
 )
+
+if(WIN32) # windows
+	list(APPEND x86Tester-execution_SOURCES
+		"src/execution/execution.win32.cpp"
+	)
+endif()
+
+if(CMAKE_SYSTEM_NAME MATCHES "Linux") # linux
+	list(APPEND x86Tester-execution_SOURCES
+		"src/execution/execution.linux.cpp"
+	)
+endif()
 
 add_library(x86Tester-execution STATIC)
 

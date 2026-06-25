@@ -8,6 +8,7 @@ name = "x86Tester"
 [subdir.thirdparty]
 
 [target.x86Tester-sandbox]
+condition = "windows"
 type = "executable"
 sources = ["src/sandbox/main.cpp"]
 compile-features = ["cxx_std_23"]
@@ -35,6 +36,8 @@ PROJECT_LABEL = "core"
 type = "static"
 alias = "x86Tester::execution"
 sources = ["src/execution/execution.cpp"]
+windows.sources = ["src/execution/execution.win32.cpp"]
+linux.sources = ["src/execution/execution.linux.cpp"]
 headers = ["include/x86Tester/execution.hpp"]
 private-include-directories = ["src/execution", "include/x86Tester"]
 include-directories = ["include"]

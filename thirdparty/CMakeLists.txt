@@ -3,7 +3,7 @@
 
 # Create a configure-time dependency on cmake.toml to improve IDE support
 if(CMKR_ROOT_PROJECT)
-	configure_file(cmake.toml cmake.toml COPYONLY)
+	set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS cmake.toml)
 endif()
 
 # Options

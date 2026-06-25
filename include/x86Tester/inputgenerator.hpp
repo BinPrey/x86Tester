@@ -299,8 +299,7 @@ namespace x86Tester::Generator
             {
                 std::vector<std::uint8_t> bytes(16, 0);
 
-                __m128 val{};
-                val.m128_u64[0] = 0xFFFFFFFFFF8000FF;
+                const std::uint64_t val = 0xFFFFFFFFFF8000FF;
 
                 std::memcpy(bytes.data(), &val, sizeof(val));
 
@@ -315,13 +314,9 @@ namespace x86Tester::Generator
                 {
                     std::vector<std::uint8_t> bytes(16);
 
-                    __m128 val{};
-                    val.m128_f32[0] = dist(prng);
-                    val.m128_f32[1] = dist(prng);
-                    val.m128_f32[2] = dist(prng);
-                    val.m128_f32[3] = dist(prng);
+                    const float val[4] = { dist(prng), dist(prng), dist(prng), dist(prng) };
 
-                    std::memcpy(bytes.data(), &val, sizeof(val));
+                    std::memcpy(bytes.data(), val, sizeof(val));
 
                     res.push_back(std::move(bytes));
                 }
@@ -337,13 +332,9 @@ namespace x86Tester::Generator
                         {
                             std::vector<std::uint8_t> bytes(16);
 
-                            __m128 val{};
-                            val.m128_u32[0] = a0 * 9;
-                            val.m128_u32[1] = b0 * 2147483647;
-                            val.m128_u32[2] = c0 * 3;
-                            val.m128_u32[3] = d0 * 9;
+                            const std::uint32_t val[4] = { a0 * 9, b0 * 2147483647, c0 * 3, d0 * 9 };
 
-                            std::memcpy(bytes.data(), &val, sizeof(val));
+                            std::memcpy(bytes.data(), val, sizeof(val));
 
                             res.push_back(std::move(bytes));
                         }

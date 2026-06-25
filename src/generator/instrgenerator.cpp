@@ -14,7 +14,11 @@ extern "C" {
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <intrin.h>
+#ifdef _WIN32
+#    include <intrin.h>
+#else
+#    include <cpuid.h>
+#endif
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -793,12 +797,21 @@ namespace x86Tester::Generator
     bool isSupportedIsaExt(ZydisISAExt isaExt)
     {
         static const std::uint32_t extendedEcx = []() -> std::uint32_t {
+#ifdef _WIN32
             int regs[4] = {};
             __cpuid(regs, 0x80000000);
             if (static_cast<std::uint32_t>(regs[0]) < 0x80000001u)
                 return 0;
             __cpuidex(regs, 0x80000001, 0);
             return static_cast<std::uint32_t>(regs[2]);
+#else
+            unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+            if (!__get_cpuid(0x80000000u, &eax, &ebx, &ecx, &edx) || eax < 0x80000001u)
+                return 0;
+            if (!__get_cpuid(0x80000001u, &eax, &ebx, &ecx, &edx))
+                return 0;
+            return ecx;
+#endif
         }();
 
         switch (isaExt)

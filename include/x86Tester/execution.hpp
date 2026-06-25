@@ -2,7 +2,9 @@
 
 #include <Zydis/Defines.h>
 #include <Zydis/Register.h>
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <span>
 
 namespace x86Tester::Execution

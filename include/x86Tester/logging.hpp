@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fmt/format.h>
+#include <string_view>
 
 namespace x86Tester::Logging
 {
@@ -24,5 +25,11 @@ namespace x86Tester::Logging
         auto msg = fmt::format(_Fmt, std::forward<TArgs>(args)...);
         Detail::println(msg);
     }
+
+    void setConsoleTitle(std::string_view title);
+    void setTitleStatus(std::string_view status);
+    void addTitleCases(size_t n);
+    void startTitleMonitor();
+    void stopTitleMonitor();
 
 } // namespace x86Tester::Logging

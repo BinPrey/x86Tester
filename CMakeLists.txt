@@ -91,7 +91,20 @@ set(x86Tester-core_SOURCES
 	"include/x86Tester/parallel.hpp"
 	"src/core/cpuid.cpp"
 	"src/core/logging.cpp"
+	"src/core/sysinfo.hpp"
 )
+
+if(WIN32) # windows
+	list(APPEND x86Tester-core_SOURCES
+		"src/core/sysinfo.win32.cpp"
+	)
+endif()
+
+if(CMAKE_SYSTEM_NAME MATCHES "Linux") # linux
+	list(APPEND x86Tester-core_SOURCES
+		"src/core/sysinfo.linux.cpp"
+	)
+endif()
 
 add_library(x86Tester-core STATIC)
 

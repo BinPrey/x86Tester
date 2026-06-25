@@ -234,6 +234,7 @@ static std::optional<std::size_t> generateInstrTests(
         InstrTestGroup testCase = generateInstructionTestData(mode, instrData);
         if (!testCase.entries.empty() && !testCase.illegalInstruction)
         {
+            Logging::addTitleCases(testCase.entries.size());
             std::lock_guard lock(mtx);
             testGroups.push_back(std::move(testCase));
         }
@@ -504,12 +505,17 @@ int main(int argc, char** argv)
 
     Generator::setStopOnImpossible(stopOnImpossible);
 
+    Logging::startTitleMonitor();
+
     const auto startTime = std::chrono::steady_clock::now();
     std::size_t totalTests = 0;
     std::size_t generated = 0;
     std::size_t skipped = 0;
     for (std::size_t i = 0; i < finalList.size(); ++i)
     {
+        Logging::setTitleStatus(
+            fmt::format("{}/{} | {}", i + 1, finalList.size(), ZydisMnemonicGetString(finalList[i])));
+
         const auto tests = generateInstrTests(mode, finalList[i], outputPath, force, i, finalList.size());
         if (tests.has_value())
         {
@@ -526,6 +532,8 @@ int main(int argc, char** argv)
             break;
         }
     }
+
+    Logging::stopTitleMonitor();
 
     const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
     fmt::print(

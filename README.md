@@ -59,13 +59,6 @@ processor brand string together with its family, model and stepping, for example
 `testdata/Intel_R_Core_TM_i7_8700K_CPU_3_70GHz_f6m158s10/`. One text file is
 produced per mnemonic.
 
-Generating the full instruction set spawns one debuggee process per worker and
-can exhaust memory or process count if something goes wrong. Use the wrapper
-scripts for full runs: `run-gen.ps1` on Windows runs the tool inside a Job Object
-capped at 10 GB and a bounded process count, and `run-gen.sh` on Linux does the
-same with a cgroup v2 memory and pids cap. Both fail closed if the caps cannot be
-applied.
-
 ## Output format
 
 Each file is plain text and describes one mnemonic. It starts with a value pool

@@ -8,7 +8,7 @@
 #    include <immintrin.h>
 #endif
 #include <iostream>
-#include <print>
+#include <fmt/format.h>
 #include <span>
 
 namespace x86Tester::Utils

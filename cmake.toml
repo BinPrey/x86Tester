@@ -23,8 +23,8 @@ PROJECT_LABEL = "sandbox"
 type = "static"
 alias = "x86Tester::core"
 sources = ["src/core/logging.cpp", "src/core/cpuid.cpp"]
-headers = ["include/x86Tester/logging.hpp", "include/x86Tester/cpuid.hpp"]
-link-libraries = ["Zydis", "sfl"]
+headers = ["include/x86Tester/logging.hpp", "include/x86Tester/cpuid.hpp", "include/x86Tester/parallel.hpp"]
+link-libraries = ["Zydis", "sfl", "fmt::fmt"]
 compile-features = ["cxx_std_23"]
 include-directories = ["include"]
 private-include-directories = ["src/core"]
@@ -72,7 +72,7 @@ PROJECT_LABEL = "cli"
 
 [target.x86Tester-tests]
 type = "executable"
-sources = ["src/tests/main.cpp", "src/tests/test.execution.cpp"]
+sources = ["src/tests/main.cpp", "src/tests/test.execution.cpp", "src/tests/test.parallel.cpp"]
 compile-features = ["cxx_std_23"]
 private-link-libraries = ["x86Tester::core", "x86Tester::generator", "x86Tester::execution", "GTest::gtest"]
 

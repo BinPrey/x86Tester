@@ -4,6 +4,10 @@
 INSTALL_GTEST = false
 BUILD_GMOCK = false
 
+[fetch-content.fmt]
+url = "https://github.com/fmtlib/fmt/releases/download/12.2.0/fmt-12.2.0.zip"
+system = true
+
 [fetch-content.sfl]
 git = "https://github.com/slavenf/sfl-library"
 tag = "2.0.0"

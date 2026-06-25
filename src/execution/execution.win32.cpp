@@ -6,7 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <intrin.h>
-#include <print>
+#include <fmt/format.h>
 #include <span>
 #include <unordered_map>
 
@@ -72,7 +72,7 @@ namespace x86Tester::Execution
             ZydisDisassembledInstruction instr;
             ZydisDisassembleIntel(ZYDIS_MACHINE_MODE_LONG_64, addr, buffer, read, &instr);
 
-            std::print("{}{:016X} ", addr == activeAddress ? ">" : " ", addr);
+            fmt::print("{}{:016X} ", addr == activeAddress ? ">" : " ", addr);
 
             n += instr.info.length;
         }
@@ -175,7 +175,7 @@ namespace x86Tester::Execution
         {
             if (exceptionAddress == ctx->breakAddr)
             {
-                // std::print("Successfully executed instruction\n");
+                // fmt::print("Successfully executed instruction\n");
                 ctx->status = ExecutionStatus::Success;
                 return DebugStatus::Exit;
             }
@@ -186,7 +186,7 @@ namespace x86Tester::Execution
             }
             if (ctx->breakAddr == 0)
             {
-                // std::print("System breakpoint\n");
+                // fmt::print("System breakpoint\n");
                 return DebugStatus::SystemBreak;
             }
         }
@@ -206,13 +206,13 @@ namespace x86Tester::Execution
             return DebugStatus::Faulted;
         }
 
-        // std::print("Exception code: {:X}\n", record.ExceptionCode);
-        // std::print("Exception flags: {:X}\n", record.ExceptionFlags);
-        // std::print("Exception address: {:X}\n", exceptionAddress);
-        // std::print("Number of parameters: {}\n", record.NumberParameters);
+        // fmt::print("Exception code: {:X}\n", record.ExceptionCode);
+        // fmt::print("Exception flags: {:X}\n", record.ExceptionFlags);
+        // fmt::print("Exception address: {:X}\n", exceptionAddress);
+        // fmt::print("Number of parameters: {}\n", record.NumberParameters);
         // for (DWORD i = 0; i < record.NumberParameters; ++i)
         //{
-        //     std::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
+        //     fmt::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
         // }
 
         if (ctx->codeBase >= exceptionAddress && exceptionAddress < ctx->codeBase + ctx->codeSize)
@@ -276,7 +276,7 @@ namespace x86Tester::Execution
             }
             else
             {
-                std::print("Unexpected event\n");
+                fmt::print("Unexpected event\n");
                 break;
             }
         }
@@ -639,14 +639,14 @@ namespace x86Tester::Execution
 
         if (SetThreadContext(ctx->hThread, &ctx->threadContext) == FALSE)
         {
-            std::print("SetThreadContext failed: {:X}\n", GetLastError());
+            fmt::print("SetThreadContext failed: {:X}\n", GetLastError());
             return false;
         }
 
         auto& dbgEvent = ctx->dbgEvent;
         if (!ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_CONTINUE))
         {
-            std::print("ContinueDebugEvent failed: {:X}\n", GetLastError());
+            fmt::print("ContinueDebugEvent failed: {:X}\n", GetLastError());
             return false;
         }
 

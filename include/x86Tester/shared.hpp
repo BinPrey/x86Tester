@@ -3,9 +3,9 @@
 #include <Zydis/SharedTypes.h>
 #include <algorithm>
 #include <cstdint>
-#include <execution>
 #include <span>
 #include <vector>
+#include <x86Tester/parallel.hpp>
 
 namespace x86Tester
 {
@@ -31,7 +31,7 @@ namespace x86Tester
         template<typename T> void forEachParallel(T&& fn) const
         {
 #ifndef _DEBUG
-            std::for_each(std::execution::par, entryOffsets.begin(), entryOffsets.end(), [&](const auto entryOffset) {
+            parallelForEach(entryOffsets.begin(), entryOffsets.end(), [&](const auto entryOffset) {
                 const auto length = instrData[entryOffset];
                 const auto instrData = std::span<const uint8_t>(this->instrData.data() + entryOffset + 1, length);
                 fn(instrData);

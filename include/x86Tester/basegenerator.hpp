@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <span>
 
 namespace x86Tester::Generator

@@ -5,12 +5,12 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
-#include <format>
+#include <fmt/format.h>
+#include <fmt/ostream.h>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <optional>
-#include <string>
-#include <string_view>
 #include <ranges>
 #include <set>
 #include <sfl/small_flat_map.hpp>
@@ -18,6 +18,8 @@
 #include <sfl/small_vector.hpp>
 #include <sfl/static_vector.hpp>
 #include <sfl/vector.hpp>
+#include <string>
+#include <string_view>
 #include <x86Tester/cpuid.hpp>
 #include <x86Tester/generator.hpp>
 #include <x86Tester/logging.hpp>
@@ -39,7 +41,7 @@ static std::filesystem::path getPathForMnemonic(ZydisMnemonic mnemonic, const st
     {
         if (!std::filesystem::create_directories(outputPath))
         {
-            std::print("Failed to create output directory\n");
+            fmt::print("Failed to create output directory\n");
             std::abort();
         }
     }
@@ -57,7 +59,7 @@ static bool serializeTestEntries(
     std::ofstream file(filePath);
     if (!file)
     {
-        std::print("Failed to open file for writing\n");
+        fmt::print("Failed to open file for writing\n");
         return false;
     }
 
@@ -129,7 +131,7 @@ static bool serializeTestEntries(
             outHasFlags = outHasFlags || entry.outputFlags.has_value();
         }
 
-        body += std::format(
+        body += fmt::format(
             "instr:0x{:X};#{};{};{};in={};out={}\n", group.address, Utils::hexEncode(group.instrData), instr.text,
             group.entries.size(), buildSchema(inRegs, inHasFlags), buildSchema(outRegs, outHasFlags));
 
@@ -142,20 +144,20 @@ static bool serializeTestEntries(
                 if (!row.empty())
                     row += ",";
                 const auto it = entry.inputRegs.find(reg);
-                row += std::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
+                row += fmt::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
             }
             if (inHasFlags)
             {
                 if (!row.empty())
                     row += ",";
-                row += std::format("{}", internFlags(entry.inputFlags.value_or(0)));
+                row += fmt::format("{}", internFlags(entry.inputFlags.value_or(0)));
             }
 
             row += "|";
 
             if (entry.exceptionType)
             {
-                row += std::format("!{}", getExceptionString(*entry.exceptionType));
+                row += fmt::format("!{}", getExceptionString(*entry.exceptionType));
             }
             else
             {
@@ -166,13 +168,13 @@ static bool serializeTestEntries(
                         row += ",";
                     firstOut = false;
                     const auto it = entry.outputRegs.find(reg);
-                    row += std::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
+                    row += fmt::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
                 }
                 if (outHasFlags)
                 {
                     if (!firstOut)
                         row += ",";
-                    row += std::format("{}", internFlags(entry.outputFlags.value_or(0)));
+                    row += fmt::format("{}", internFlags(entry.outputFlags.value_or(0)));
                 }
             }
 
@@ -181,10 +183,10 @@ static bool serializeTestEntries(
         }
     }
 
-    std::print(file, "data:{}\n", dataPool.size());
+    fmt::print(file, "data:{}\n", dataPool.size());
     for (const auto& hex : dataPool)
     {
-        std::print(file, "#{}\n", hex);
+        fmt::print(file, "#{}\n", hex);
     }
 
     file << body;
@@ -193,19 +195,19 @@ static bool serializeTestEntries(
 }
 
 static std::optional<std::size_t> generateInstrTests(
-    ZydisMachineMode mode, ZydisMnemonic mnemonic, const std::filesystem::path& outputPath, bool force,
-    std::size_t index, std::size_t total)
+    ZydisMachineMode mode, ZydisMnemonic mnemonic, const std::filesystem::path& outputPath, bool force, std::size_t index,
+    std::size_t total)
 {
     const auto filePath = getPathForMnemonic(mnemonic, outputPath);
     const double pct = total > 0 ? (100.0 * (index + 1) / static_cast<double>(total)) : 0.0;
 
     if (!force && std::filesystem::exists(filePath))
     {
-        std::print("[{}/{} {:5.1f}%] {} (skipped)\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
+        fmt::print("[{}/{} {:5.1f}%] {} (skipped)\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
         return std::nullopt;
     }
 
-    std::print("[{}/{} {:5.1f}%] {}\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
+    fmt::print("[{}/{} {:5.1f}%] {}\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
 
     const auto filter = Generator::Filter{}.addMnemonics(mnemonic);
 
@@ -331,21 +333,20 @@ static std::optional<ZydisInstructionCategory> resolveCategory(std::string_view 
 
 static void printUsage()
 {
-    std::print(
-        "Usage: x86Tester-cli [options] [mnemonic ...]\n"
-        "\n"
-        "Selection (default: all supported instructions):\n"
-        "  <mnemonic>            Generate the named mnemonic (e.g. lea add)\n"
-        "  --isa <ext>           Generate all mnemonics of an ISA extension (e.g. SSE2, BMI1)\n"
-        "  --category <cat>      Generate all mnemonics of a category (e.g. BINARY, SSE)\n"
-        "  --exclude <mnemonic>  Exclude a mnemonic from the selection\n"
-        "\n"
-        "Options:\n"
-        "  --out <dir>           Output directory (default: testdata)\n"
-        "  --force               Regenerate even if the output file already exists\n"
-        "  --list                List the selected mnemonics and exit\n"
-        "  --stop-on-impossible  Stop cleanly at the first impossible target (for fixing)\n"
-        "  --help                Show this help\n");
+    fmt::print("Usage: x86Tester-cli [options] [mnemonic ...]\n"
+               "\n"
+               "Selection (default: all supported instructions):\n"
+               "  <mnemonic>            Generate the named mnemonic (e.g. lea add)\n"
+               "  --isa <ext>           Generate all mnemonics of an ISA extension (e.g. SSE2, BMI1)\n"
+               "  --category <cat>      Generate all mnemonics of a category (e.g. BINARY, SSE)\n"
+               "  --exclude <mnemonic>  Exclude a mnemonic from the selection\n"
+               "\n"
+               "Options:\n"
+               "  --out <dir>           Output directory (default: testdata)\n"
+               "  --force               Regenerate even if the output file already exists\n"
+               "  --list                List the selected mnemonics and exit\n"
+               "  --stop-on-impossible  Stop cleanly at the first impossible target (for fixing)\n"
+               "  --help                Show this help\n");
 }
 
 int main(int argc, char** argv)
@@ -362,7 +363,7 @@ int main(int argc, char** argv)
     const auto nextArg = [&](int& i) -> std::string {
         if (i + 1 >= argc)
         {
-            std::print("Missing value for {}\n", argv[i]);
+            fmt::print("Missing value for {}\n", argv[i]);
             std::exit(EXIT_FAILURE);
         }
         return argv[++i];
@@ -392,7 +393,7 @@ int main(int argc, char** argv)
             stopOnImpossible = true;
         else if (arg.starts_with("-"))
         {
-            std::print("Unknown option: {}\n", arg);
+            fmt::print("Unknown option: {}\n", arg);
             printUsage();
             return EXIT_FAILURE;
         }
@@ -409,7 +410,7 @@ int main(int argc, char** argv)
             isaExts.insert(*e);
         else
         {
-            std::print("Unknown ISA extension: {}\n", name);
+            fmt::print("Unknown ISA extension: {}\n", name);
             return EXIT_FAILURE;
         }
     }
@@ -421,7 +422,7 @@ int main(int argc, char** argv)
             categories.insert(*c);
         else
         {
-            std::print("Unknown category: {}\n", name);
+            fmt::print("Unknown category: {}\n", name);
             return EXIT_FAILURE;
         }
     }
@@ -433,7 +434,7 @@ int main(int argc, char** argv)
             excluded.insert(*m);
         else
         {
-            std::print("Unknown mnemonic (exclude): {}\n", name);
+            fmt::print("Unknown mnemonic (exclude): {}\n", name);
             return EXIT_FAILURE;
         }
     }
@@ -459,7 +460,7 @@ int main(int argc, char** argv)
                 selected.insert(*m);
             else
             {
-                std::print("Unknown mnemonic: {}\n", name);
+                fmt::print("Unknown mnemonic: {}\n", name);
                 return EXIT_FAILURE;
             }
         }
@@ -491,14 +492,14 @@ int main(int argc, char** argv)
     if (list)
     {
         for (const auto m : finalList)
-            std::print("{}\n", ZydisMnemonicGetString(m));
-        std::print("Total: {} mnemonics\n", finalList.size());
+            fmt::print("{}\n", ZydisMnemonicGetString(m));
+        fmt::print("Total: {} mnemonics\n", finalList.size());
         return EXIT_SUCCESS;
     }
 
     const auto& cpu = Cpuid::getCpuInfo();
-    outputPath /= std::format("{}_f{}m{}s{}", cpu.name, cpu.family, cpu.model, cpu.stepping);
-    std::print("Output directory: {}\n", outputPath.string());
+    outputPath /= fmt::format("{}_f{}m{}s{}", cpu.name, cpu.family, cpu.model, cpu.stepping);
+    fmt::print("Output directory: {}\n", outputPath.string());
 
     Generator::setStopOnImpossible(stopOnImpossible);
 
@@ -520,16 +521,15 @@ int main(int argc, char** argv)
         }
         if (Generator::stopRequested())
         {
-            std::print("\nStopped at first impossible target:\n{}\n", Generator::takeImpossibleReport());
+            fmt::print("\nStopped at first impossible target:\n{}\n", Generator::takeImpossibleReport());
             break;
         }
     }
 
     const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
-    std::print(
-        "Done: {} generated, {} skipped (of {} mnemonics), {} test cases, {:.1f}s\n", generated, skipped,
-        finalList.size(), totalTests, elapsed);
+    fmt::print(
+        "Done: {} generated, {} skipped (of {} mnemonics), {} test cases, {:.1f}s\n", generated, skipped, finalList.size(),
+        totalTests, elapsed);
 
     return EXIT_SUCCESS;
 }
-

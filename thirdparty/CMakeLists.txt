@@ -16,6 +16,13 @@ include(FetchContent)
 if(POLICY CMP0135)
 	cmake_policy(SET CMP0135 NEW)
 endif()
+message(STATUS "Fetching fmt...")
+FetchContent_Declare(fmt SYSTEM
+	URL
+		"https://github.com/fmtlib/fmt/releases/download/12.2.0/fmt-12.2.0.zip"
+)
+FetchContent_MakeAvailable(fmt)
+
 message(STATUS "Fetching sfl (2.0.0)...")
 FetchContent_Declare(sfl SYSTEM
 	GIT_REPOSITORY

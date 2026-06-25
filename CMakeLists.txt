@@ -88,6 +88,7 @@ set(x86Tester-core_SOURCES
 	cmake.toml
 	"include/x86Tester/cpuid.hpp"
 	"include/x86Tester/logging.hpp"
+	"include/x86Tester/parallel.hpp"
 	"src/core/cpuid.cpp"
 	"src/core/logging.cpp"
 )
@@ -113,6 +114,7 @@ target_include_directories(x86Tester-core PRIVATE
 target_link_libraries(x86Tester-core PUBLIC
 	Zydis
 	sfl
+	fmt::fmt
 )
 
 set_target_properties(x86Tester-core PROPERTIES
@@ -243,6 +245,7 @@ set(x86Tester-tests_SOURCES
 	cmake.toml
 	"src/tests/main.cpp"
 	"src/tests/test.execution.cpp"
+	"src/tests/test.parallel.cpp"
 )
 
 add_executable(x86Tester-tests)

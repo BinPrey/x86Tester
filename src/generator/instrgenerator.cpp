@@ -1,13 +1,10 @@
-#include "generator.hpp"
-
 #include "basegenerator.hpp"
-
+#include "generator.hpp"
 #include "genshared.hpp"
-
-#include <x86Tester/cpuid.hpp>
 
 #include <Zydis/Disassembler.h>
 #include <Zydis/Encoder.h>
+#include <x86Tester/cpuid.hpp>
 extern "C" {
 #include <Zydis/Internal/EncoderData.h>
 #include <Zydis/Internal/SharedData.h>
@@ -19,10 +16,9 @@ extern "C" {
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <execution>
-#include <format>
+#include <fmt/format.h>
 #include <memory>
-#include <print>
+#include <mutex>
 #include <random>
 #include <sfl/small_flat_set.hpp>
 #include <sfl/static_vector.hpp>
@@ -32,6 +28,7 @@ extern "C" {
 #include <x86Tester/execution.hpp>
 #include <x86Tester/inputgenerator.hpp>
 #include <x86Tester/logging.hpp>
+#include <x86Tester/parallel.hpp>
 
 namespace x86Tester::Generator
 {
@@ -590,7 +587,7 @@ namespace x86Tester::Generator
         std::string result;
         for (size_t i = 0; i < length; i++)
         {
-            result += std::format("{:02X} ", data[i]);
+            result += fmt::format("{:02X} ", data[i]);
         }
         return result;
     }
@@ -614,12 +611,12 @@ namespace x86Tester::Generator
                     opString += "PTR";
                     break;
                 case ZYDIS_OPERAND_TYPE_IMMEDIATE:
-                    opString += std::format("{}", req.operands[i].imm.s);
+                    opString += fmt::format("{}", req.operands[i].imm.s);
                     break;
             }
         }
 
-        return std::format("{} {}", ZydisMnemonicGetString(req.mnemonic), opString);
+        return fmt::format("{} {}", ZydisMnemonicGetString(req.mnemonic), opString);
     }
 
     struct EncodeResult
@@ -677,15 +674,9 @@ namespace x86Tester::Generator
         std::atomic<size_t> progress{};
         std::atomic<size_t> countInvalid{};
 
-        static constexpr auto kExecutionPolicy = []() {
-            if constexpr (TBuildInParallel)
-                return std::execution::par;
-            else
-                return std::execution::seq;
-        }();
-
         auto instrGenerators = createGenerators(filter);
-        std::for_each(kExecutionPolicy, instrGenerators.begin(), instrGenerators.end(), [&](auto& instr) {
+
+        auto generateOne = [&](auto& instr) {
             for (;;)
             {
                 auto req = instr.current();
@@ -717,7 +708,12 @@ namespace x86Tester::Generator
 
             if (reporter)
                 reporter(progress.load(), instrGenerators.size());
-        });
+        };
+
+        if constexpr (TBuildInParallel)
+            parallelForEach(instrGenerators.begin(), instrGenerators.end(), generateOne);
+        else
+            std::for_each(instrGenerators.begin(), instrGenerators.end(), generateOne);
 
         return res;
     }
@@ -890,14 +886,12 @@ namespace x86Tester::Generator
         return sortRegs(regs);
     }
 
-
     static std::uint32_t getFlagsRead(const ZydisDisassembledInstruction& instr)
     {
         std::uint32_t flags = 0;
         flags |= instr.info.cpu_flags->tested;
         return flags;
     }
-
 
     static std::size_t getRegOffset(ZydisRegister reg)
     {
@@ -988,7 +982,8 @@ namespace x86Tester::Generator
 #ifdef _DEBUG
             if (iteration >= kReportInputsThreshold)
             {
-                regData.emplace_back(reg, std::vector<std::uint8_t>{ regBuf + regOffset, regBuf + regOffset + usedRegByteSize });
+                regData.emplace_back(
+                    reg, std::vector<std::uint8_t>{ regBuf + regOffset, regBuf + regOffset + usedRegByteSize });
             }
 #endif
         }
@@ -1054,7 +1049,7 @@ namespace x86Tester::Generator
             std::string inputsStr;
             for (const auto& [reg, data] : regData)
             {
-                inputsStr += std::format("{}=#{} ", ZydisRegisterGetString(reg), Utils::hexEncode(data));
+                inputsStr += fmt::format("{}=#{} ", ZydisRegisterGetString(reg), Utils::hexEncode(data));
             }
 
             Logging::println("Test: {} - Inputs: {}", instr.text, inputsStr);
@@ -1073,8 +1068,7 @@ namespace x86Tester::Generator
     }
 
     static void presetModifiedRegs(
-        ZydisMachineMode mode, Execution::ScopedContext& ctx, const ZydisDisassembledInstruction& instr,
-        std::uint8_t value)
+        ZydisMachineMode mode, Execution::ScopedContext& ctx, const ZydisDisassembledInstruction& instr, std::uint8_t value)
     {
         std::uint8_t regBuf[256];
         std::memset(regBuf, value, sizeof(regBuf));
@@ -1122,12 +1116,11 @@ namespace x86Tester::Generator
     static std::string getTestInfo(const TestBitInfo& info)
     {
         std::string res;
-        res = std::format("{}[{}] = 0b{}", ZydisRegisterGetString(info.reg), info.bitPos, info.expectedBitValue);
+        res = fmt::format("{}[{}] = 0b{}", ZydisRegisterGetString(info.reg), info.bitPos, info.expectedBitValue);
         return res;
     }
 
-    static std::vector<InputGenerator> setupInputGenerators(
-        std::mt19937_64& prng, const ZydisDisassembledInstruction& instr)
+    static std::vector<InputGenerator> setupInputGenerators(std::mt19937_64& prng, const ZydisDisassembledInstruction& instr)
     {
         std::vector<InputGenerator> generators;
 
@@ -1459,7 +1452,7 @@ namespace x86Tester::Generator
         {
             if (!satisfied[t])
             {
-                const auto report = std::format("Test probably impossible: {} ; {}", instr.text, getTestInfo(testMatrix[t]));
+                const auto report = fmt::format("Test probably impossible: {} ; {}", instr.text, getTestInfo(testMatrix[t]));
                 Logging::println("{}", report);
                 if (g_stopOnImpossible.load() && !g_stopRequested.exchange(true))
                 {
@@ -1488,8 +1481,7 @@ namespace x86Tester::Generator
             {
                 const std::uint64_t value = (*entry.outputFlags >> i) & 1;
                 facts.push_back(
-                    (static_cast<std::uint64_t>(ZYDIS_REGISTER_FLAGS) << 32) | (static_cast<std::uint64_t>(i) << 1)
-                    | value);
+                    (static_cast<std::uint64_t>(ZYDIS_REGISTER_FLAGS) << 32) | (static_cast<std::uint64_t>(i) << 1) | value);
             }
         }
         if (entry.exceptionType)

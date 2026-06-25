@@ -1,5 +1,5 @@
 #include <chrono>
-#include <print>
+#include <fmt/format.h>
 #include <x86Tester/logging.hpp>
 
 namespace x86Tester::Logging
@@ -38,9 +38,9 @@ namespace x86Tester::Logging
         int namepad = 20 - static_cast<int>(name.size());
 
         std::string line;
-        line = std::format("\r{:25} {:3d}% [{:40}]", name, val, std::string_view(PBSTR, lpad));
+        line = fmt::format("\r{:25} {:3d}% [{:40}]", name, val, std::string_view(PBSTR, lpad));
 
-        std::print("{}", line);
+        fmt::print("{}", line);
         std::fflush(stdout);
 
         _progressLineLen = line.size();
@@ -58,7 +58,7 @@ namespace x86Tester::Logging
 
         auto endTime = clock::now();
         auto seconds = std::chrono::duration<double>(endTime - _startTime).count();
-        std::println(
+        fmt::println(
             "\r{}, completed in {:.2f}s.{:{}}", _progressName, seconds, "",
             _progressName.size() < 72 ? 72 - _progressName.size() : 1);
     }
@@ -70,11 +70,11 @@ namespace x86Tester::Logging
             if (_inProgress)
             {
                 size_t spaces = msg.size() < _progressLineLen ? _progressLineLen - msg.size() : 0;
-                std::println("\r{}{}", msg, std::string(spaces, ' '));
+                fmt::println("\r{}{}", msg, std::string(spaces, ' '));
                 printProgress(_progressName, _progress, true);
             }
             else
-                std::println("{}", msg);
+                fmt::println("{}", msg);
         }
 
         void startProgress(const std::string_view msg)

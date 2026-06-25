@@ -16,10 +16,8 @@ extern "C" {
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <execution>
-#include <format>
+#include <fmt/format.h>
 #include <memory>
-#include <print>
 #include <random>
 #include <sfl/small_flat_set.hpp>
 #include <sfl/static_vector.hpp>

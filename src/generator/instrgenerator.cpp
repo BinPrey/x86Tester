@@ -1165,6 +1165,10 @@ namespace x86Tester::Generator
         if (!isSupportedIsaExt(instr.info.meta.isa_ext))
             return false;
 
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX
+            || instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
+            return false;
+
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];

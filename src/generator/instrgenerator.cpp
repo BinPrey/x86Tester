@@ -1226,6 +1226,7 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_RDRAND:
             case ZYDIS_MNEMONIC_RDSEED:
             case ZYDIS_MNEMONIC_RDPID:
+            case ZYDIS_MNEMONIC_RDPRU:
             case ZYDIS_MNEMONIC_RDFSBASE:
             case ZYDIS_MNEMONIC_RDGSBASE:
             case ZYDIS_MNEMONIC_WRFSBASE:

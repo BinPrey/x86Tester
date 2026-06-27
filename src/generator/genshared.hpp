@@ -30,6 +30,7 @@ namespace x86Tester::Generator
             case ZYDIS_REGISTER_FLAGS:
             case ZYDIS_REGISTER_EFLAGS:
             case ZYDIS_REGISTER_RFLAGS:
+            case ZYDIS_REGISTER_PKRU:
                 return true;
         }
         return false;

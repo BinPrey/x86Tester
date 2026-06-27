@@ -816,6 +816,18 @@ namespace x86Tester::Generator
                     laneZeroMask = ops[3].imm.value.u & 0xF;
                 }
                 break;
+            case ZYDIS_MNEMONIC_VPERM2F128:
+            case ZYDIS_MNEMONIC_VPERM2I128:
+                if (ops[3].type == ZYDIS_OPERAND_TYPE_IMMEDIATE)
+                {
+                    const auto imm = ops[3].imm.value.u;
+                    laneZeroWidth = 128;
+                    if ((imm & 0x08) != 0)
+                        laneZeroMask |= 0x1;
+                    if ((imm & 0x80) != 0)
+                        laneZeroMask |= 0x2;
+                }
+                break;
             case ZYDIS_MNEMONIC_VCVTPH2PS:
                 // Half-precision has a 10-bit mantissa; widening to single leaves the low 13
                 // mantissa bits of every 32-bit lane 0.

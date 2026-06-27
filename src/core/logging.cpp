@@ -44,10 +44,10 @@ namespace x86Tester::Logging
 
         int namepad = 20 - static_cast<int>(name.size());
 
-        std::string line;
-        line = fmt::format("\r{:25} {:3d}% [{:40}]", name, val, std::string_view(PBSTR, lpad));
+        std::string line = fmt::format("{:25} {:3d}% [{:40}]", name, val, std::string_view(PBSTR, lpad));
+        const std::size_t pad = line.size() < _progressLineLen ? _progressLineLen - line.size() : 0;
 
-        fmt::print("{}", line);
+        fmt::print("\r{}{:{}}", line, "", pad);
         std::fflush(stdout);
 
         _progressLineLen = line.size();
@@ -67,9 +67,10 @@ namespace x86Tester::Logging
 
         auto endTime = clock::now();
         auto seconds = std::chrono::duration<double>(endTime - _startTime).count();
-        fmt::println(
-            "\r{}, completed in {:.2f}s.{:{}}", _progressName, seconds, "",
-            _progressName.size() < 72 ? 72 - _progressName.size() : 1);
+        std::string line = fmt::format("{}, completed in {:.2f}s.", _progressName, seconds);
+        const std::size_t pad = line.size() < _progressLineLen ? _progressLineLen - line.size() : 0;
+        fmt::println("\r{}{:{}}", line, "", pad);
+        _progressLineLen = 0;
     }
 
     namespace Detail

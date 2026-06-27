@@ -98,6 +98,7 @@ namespace x86Tester::Cpuid
             cpuid(7u, 0, r);
             info.bmi1 = (r[1] & (1u << 3)) != 0;
             info.avx2 = (r[1] & (1u << 5)) != 0;
+            info.avx512f = (r[1] & (1u << 16)) != 0;
             info.bmi2 = (r[1] & (1u << 8)) != 0;
             info.rdseed = (r[1] & (1u << 18)) != 0;
             info.adx = (r[1] & (1u << 19)) != 0;

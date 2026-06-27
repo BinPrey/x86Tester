@@ -5,10 +5,11 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
-#include <intrin.h>
 #include <fmt/format.h>
+#include <intrin.h>
 #include <span>
 #include <unordered_map>
+#include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -29,7 +30,9 @@ namespace x86Tester::Execution
         std::uintptr_t codeAddr{};
         std::size_t codeSize{};
         std::uintptr_t breakAddr{};
-        CONTEXT threadContext{};
+        std::vector<std::uint8_t> contextStorage;
+        CONTEXT* threadContext{};
+        DWORD64 xstateMask{};
         DEBUG_EVENT dbgEvent{};
         ExecutionStatus status{};
         DWORD contextFlags{ CONTEXT_ALL };
@@ -91,8 +94,7 @@ namespace x86Tester::Execution
             return 0;
 
         std::size_t offset = 0;
-        if (reg == ZYDIS_REGISTER_AH || reg == ZYDIS_REGISTER_BH || reg == ZYDIS_REGISTER_CH
-            || reg == ZYDIS_REGISTER_DH)
+        if (reg == ZYDIS_REGISTER_AH || reg == ZYDIS_REGISTER_BH || reg == ZYDIS_REGISTER_CH || reg == ZYDIS_REGISTER_DH)
             offset = 1;
 
         std::size_t nbytes = sizeBits / 8;
@@ -109,8 +111,7 @@ namespace x86Tester::Execution
     static std::uint64_t computeMemoryAddress(Context* ctx, const ZydisDecodedOperand& op)
     {
         std::uint64_t addr = static_cast<std::uint64_t>(op.mem.disp.value);
-        if (op.mem.base != ZYDIS_REGISTER_NONE && op.mem.base != ZYDIS_REGISTER_RIP
-            && op.mem.base != ZYDIS_REGISTER_EIP)
+        if (op.mem.base != ZYDIS_REGISTER_NONE && op.mem.base != ZYDIS_REGISTER_RIP && op.mem.base != ZYDIS_REGISTER_EIP)
             addr += readRegisterValue(ctx, op.mem.base, 64);
         if (op.mem.index != ZYDIS_REGISTER_NONE)
             addr += readRegisterValue(ctx, op.mem.index, 64) * op.mem.scale;
@@ -121,8 +122,7 @@ namespace x86Tester::Execution
     {
         std::uint8_t buffer[16]{};
         SIZE_T read = 0;
-        if (!ReadProcessMemory(
-                ctx->processInfo.hProcess, reinterpret_cast<void*>(faultAddress), buffer, sizeof(buffer), &read)
+        if (!ReadProcessMemory(ctx->processInfo.hProcess, reinterpret_cast<void*>(faultAddress), buffer, sizeof(buffer), &read)
             || read == 0)
             return ExecutionStatus::ExceptionIntDivideError;
 
@@ -153,8 +153,7 @@ namespace x86Tester::Execution
             std::uint64_t mem = 0;
             SIZE_T r = 0;
             if (nbytes >= 1 && nbytes <= 8
-                && ReadProcessMemory(ctx->processInfo.hProcess, reinterpret_cast<void*>(addr), &mem, nbytes, &r)
-                && r == nbytes)
+                && ReadProcessMemory(ctx->processInfo.hProcess, reinterpret_cast<void*>(addr), &mem, nbytes, &r) && r == nbytes)
             {
                 value = mem;
                 haveValue = true;
@@ -424,30 +423,43 @@ namespace x86Tester::Execution
 
     static bool setupThreadContext(Context* ctx)
     {
-        ctx->threadContext.ContextFlags = CONTEXT_ALL;
-        if (!GetThreadContext(ctx->hThread, &ctx->threadContext))
+        ctx->xstateMask = GetEnabledXStateFeatures();
+
+        DWORD contextSize = 0;
+        InitializeContext2(nullptr, CONTEXT_ALL | CONTEXT_XSTATE, nullptr, &contextSize, ctx->xstateMask);
+        ctx->contextStorage.resize(contextSize);
+
+        PCONTEXT pctx = nullptr;
+        if (!InitializeContext2(ctx->contextStorage.data(), CONTEXT_ALL | CONTEXT_XSTATE, &pctx, &contextSize, ctx->xstateMask))
+        {
+            return false;
+        }
+        ctx->threadContext = pctx;
+
+        ctx->threadContext->ContextFlags = CONTEXT_ALL;
+        if (!GetThreadContext(ctx->hThread, ctx->threadContext))
         {
             return false;
         }
 
         // Clear all registers.
-        ctx->threadContext.Rax = 0;
-        ctx->threadContext.Rcx = 0;
-        ctx->threadContext.Rdx = 0;
-        ctx->threadContext.Rbx = 0;
-        ctx->threadContext.Rsp = 0;
-        ctx->threadContext.Rbp = 0;
-        ctx->threadContext.Rsi = 0;
-        ctx->threadContext.Rdi = 0;
-        ctx->threadContext.R8 = 0;
-        ctx->threadContext.R9 = 0;
-        ctx->threadContext.R10 = 0;
-        ctx->threadContext.R11 = 0;
-        ctx->threadContext.R12 = 0;
-        ctx->threadContext.R13 = 0;
-        ctx->threadContext.R14 = 0;
-        ctx->threadContext.R15 = 0;
-        ctx->threadContext.Rip = ctx->codeBase + 1;
+        ctx->threadContext->Rax = 0;
+        ctx->threadContext->Rcx = 0;
+        ctx->threadContext->Rdx = 0;
+        ctx->threadContext->Rbx = 0;
+        ctx->threadContext->Rsp = 0;
+        ctx->threadContext->Rbp = 0;
+        ctx->threadContext->Rsi = 0;
+        ctx->threadContext->Rdi = 0;
+        ctx->threadContext->R8 = 0;
+        ctx->threadContext->R9 = 0;
+        ctx->threadContext->R10 = 0;
+        ctx->threadContext->R11 = 0;
+        ctx->threadContext->R12 = 0;
+        ctx->threadContext->R13 = 0;
+        ctx->threadContext->R14 = 0;
+        ctx->threadContext->R15 = 0;
+        ctx->threadContext->Rip = ctx->codeBase + 1;
 
         return true;
     }
@@ -458,6 +470,7 @@ namespace x86Tester::Execution
         if (!ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, code.data(), code.size(), &instr)))
             return CONTEXT_ALL;
 
+        DWORD flags = CONTEXT_CONTROL | CONTEXT_INTEGER;
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];
@@ -473,12 +486,21 @@ namespace x86Tester::Execution
                 case ZYDIS_REGCLASS_FLAGS:
                 case ZYDIS_REGCLASS_IP:
                     break;
+                case ZYDIS_REGCLASS_YMM:
+                case ZYDIS_REGCLASS_ZMM:
+                case ZYDIS_REGCLASS_MASK:
+                    return CONTEXT_ALL | CONTEXT_XSTATE;
+                case ZYDIS_REGCLASS_XMM:
+                    if (op.reg.value >= ZYDIS_REGISTER_XMM16)
+                        return CONTEXT_ALL | CONTEXT_XSTATE;
+                    flags = CONTEXT_ALL;
+                    break;
                 default:
-                    return CONTEXT_ALL;
+                    flags = CONTEXT_ALL;
             }
         }
 
-        return CONTEXT_CONTROL | CONTEXT_INTEGER;
+        return flags;
     }
 
     Context* prepare(ZydisMachineMode mode, std::span<const std::uint8_t> code)
@@ -524,107 +546,218 @@ namespace x86Tester::Execution
         switch (reg)
         {
             case ZYDIS_REGISTER_RAX:
-                return getRegData(ctx->threadContext.Rax);
+                return getRegData(ctx->threadContext->Rax);
             case ZYDIS_REGISTER_RCX:
-                return getRegData(ctx->threadContext.Rcx);
+                return getRegData(ctx->threadContext->Rcx);
             case ZYDIS_REGISTER_RDX:
-                return getRegData(ctx->threadContext.Rdx);
+                return getRegData(ctx->threadContext->Rdx);
             case ZYDIS_REGISTER_RBX:
-                return getRegData(ctx->threadContext.Rbx);
+                return getRegData(ctx->threadContext->Rbx);
             case ZYDIS_REGISTER_RSP:
-                return getRegData(ctx->threadContext.Rsp);
+                return getRegData(ctx->threadContext->Rsp);
             case ZYDIS_REGISTER_RBP:
-                return getRegData(ctx->threadContext.Rbp);
+                return getRegData(ctx->threadContext->Rbp);
             case ZYDIS_REGISTER_RSI:
-                return getRegData(ctx->threadContext.Rsi);
+                return getRegData(ctx->threadContext->Rsi);
             case ZYDIS_REGISTER_RDI:
-                return getRegData(ctx->threadContext.Rdi);
+                return getRegData(ctx->threadContext->Rdi);
             case ZYDIS_REGISTER_R8:
-                return getRegData(ctx->threadContext.R8);
+                return getRegData(ctx->threadContext->R8);
             case ZYDIS_REGISTER_R9:
-                return getRegData(ctx->threadContext.R9);
+                return getRegData(ctx->threadContext->R9);
             case ZYDIS_REGISTER_R10:
-                return getRegData(ctx->threadContext.R10);
+                return getRegData(ctx->threadContext->R10);
             case ZYDIS_REGISTER_R11:
-                return getRegData(ctx->threadContext.R11);
+                return getRegData(ctx->threadContext->R11);
             case ZYDIS_REGISTER_R12:
-                return getRegData(ctx->threadContext.R12);
+                return getRegData(ctx->threadContext->R12);
             case ZYDIS_REGISTER_R13:
-                return getRegData(ctx->threadContext.R13);
+                return getRegData(ctx->threadContext->R13);
             case ZYDIS_REGISTER_R14:
-                return getRegData(ctx->threadContext.R14);
+                return getRegData(ctx->threadContext->R14);
             case ZYDIS_REGISTER_R15:
-                return getRegData(ctx->threadContext.R15);
+                return getRegData(ctx->threadContext->R15);
             case ZYDIS_REGISTER_RIP:
-                return getRegData(ctx->threadContext.Rip);
+                return getRegData(ctx->threadContext->Rip);
             case ZYDIS_REGISTER_RFLAGS:
                 [[fallthrough]];
             case ZYDIS_REGISTER_EFLAGS:
-                return getRegData(ctx->threadContext.EFlags);
+                return getRegData(ctx->threadContext->EFlags);
             case ZYDIS_REGISTER_XMM0:
-                return getRegData(ctx->threadContext.Xmm0);
+                return getRegData(ctx->threadContext->Xmm0);
             case ZYDIS_REGISTER_XMM1:
-                return getRegData(ctx->threadContext.Xmm1);
+                return getRegData(ctx->threadContext->Xmm1);
             case ZYDIS_REGISTER_XMM2:
-                return getRegData(ctx->threadContext.Xmm2);
+                return getRegData(ctx->threadContext->Xmm2);
             case ZYDIS_REGISTER_XMM3:
-                return getRegData(ctx->threadContext.Xmm3);
+                return getRegData(ctx->threadContext->Xmm3);
             case ZYDIS_REGISTER_XMM4:
-                return getRegData(ctx->threadContext.Xmm4);
+                return getRegData(ctx->threadContext->Xmm4);
             case ZYDIS_REGISTER_XMM5:
-                return getRegData(ctx->threadContext.Xmm5);
+                return getRegData(ctx->threadContext->Xmm5);
             case ZYDIS_REGISTER_XMM6:
-                return getRegData(ctx->threadContext.Xmm6);
+                return getRegData(ctx->threadContext->Xmm6);
             case ZYDIS_REGISTER_XMM7:
-                return getRegData(ctx->threadContext.Xmm7);
+                return getRegData(ctx->threadContext->Xmm7);
             case ZYDIS_REGISTER_XMM8:
-                return getRegData(ctx->threadContext.Xmm8);
+                return getRegData(ctx->threadContext->Xmm8);
             case ZYDIS_REGISTER_XMM9:
-                return getRegData(ctx->threadContext.Xmm9);
+                return getRegData(ctx->threadContext->Xmm9);
             case ZYDIS_REGISTER_XMM10:
-                return getRegData(ctx->threadContext.Xmm10);
+                return getRegData(ctx->threadContext->Xmm10);
             case ZYDIS_REGISTER_XMM11:
-                return getRegData(ctx->threadContext.Xmm11);
+                return getRegData(ctx->threadContext->Xmm11);
             case ZYDIS_REGISTER_XMM12:
-                return getRegData(ctx->threadContext.Xmm12);
+                return getRegData(ctx->threadContext->Xmm12);
             case ZYDIS_REGISTER_XMM13:
-                return getRegData(ctx->threadContext.Xmm13);
+                return getRegData(ctx->threadContext->Xmm13);
             case ZYDIS_REGISTER_XMM14:
-                return getRegData(ctx->threadContext.Xmm14);
+                return getRegData(ctx->threadContext->Xmm14);
             case ZYDIS_REGISTER_XMM15:
-                return getRegData(ctx->threadContext.Xmm15);
+                return getRegData(ctx->threadContext->Xmm15);
             case ZYDIS_REGISTER_ST0:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[0]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[0]);
             case ZYDIS_REGISTER_ST1:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[1]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[1]);
             case ZYDIS_REGISTER_ST2:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[2]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[2]);
             case ZYDIS_REGISTER_ST3:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[3]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[3]);
             case ZYDIS_REGISTER_ST4:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[4]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[4]);
             case ZYDIS_REGISTER_ST5:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[5]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[5]);
             case ZYDIS_REGISTER_ST6:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[6]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[6]);
             case ZYDIS_REGISTER_ST7:
-                return getRegData(ctx->threadContext.FltSave.FloatRegisters[7]);
+                return getRegData(ctx->threadContext->FltSave.FloatRegisters[7]);
             case ZYDIS_REGISTER_X87STATUS:
-                return getRegData(ctx->threadContext.FltSave.StatusWord);
+                return getRegData(ctx->threadContext->FltSave.StatusWord);
             case ZYDIS_REGISTER_X87CONTROL:
-                return getRegData(ctx->threadContext.FltSave.ControlWord);
+                return getRegData(ctx->threadContext->FltSave.ControlWord);
             case ZYDIS_REGISTER_X87TAG:
-                return getRegData(ctx->threadContext.FltSave.TagWord);
+                return getRegData(ctx->threadContext->FltSave.TagWord);
             case ZYDIS_REGISTER_MXCSR:
-                return getRegData(ctx->threadContext.FltSave.MxCsr);
+                return getRegData(ctx->threadContext->FltSave.MxCsr);
         }
 
         assert(false);
         return {};
     }
 
+    static std::uint8_t* xstatePtr(Context* ctx, DWORD feature)
+    {
+        DWORD length = 0;
+        return reinterpret_cast<std::uint8_t*>(LocateXStateFeature(ctx->threadContext, feature, &length));
+    }
+
+    static bool isWideOrMaskReg(ZydisRegister reg)
+    {
+        return (reg >= ZYDIS_REGISTER_XMM16 && reg <= ZYDIS_REGISTER_XMM31)
+            || (reg >= ZYDIS_REGISTER_YMM0 && reg <= ZYDIS_REGISTER_YMM31)
+            || (reg >= ZYDIS_REGISTER_ZMM0 && reg <= ZYDIS_REGISTER_ZMM31)
+            || (reg >= ZYDIS_REGISTER_K0 && reg <= ZYDIS_REGISTER_K7);
+    }
+
+    static void wideRegLayout(ZydisRegister reg, unsigned& idx, unsigned& width, bool& isMask)
+    {
+        isMask = false;
+        if (reg >= ZYDIS_REGISTER_K0 && reg <= ZYDIS_REGISTER_K7)
+        {
+            idx = static_cast<unsigned>(reg - ZYDIS_REGISTER_K0);
+            width = 8;
+            isMask = true;
+        }
+        else if (reg >= ZYDIS_REGISTER_XMM0 && reg <= ZYDIS_REGISTER_XMM31)
+        {
+            idx = static_cast<unsigned>(reg - ZYDIS_REGISTER_XMM0);
+            width = 16;
+        }
+        else if (reg >= ZYDIS_REGISTER_YMM0 && reg <= ZYDIS_REGISTER_YMM31)
+        {
+            idx = static_cast<unsigned>(reg - ZYDIS_REGISTER_YMM0);
+            width = 32;
+        }
+        else
+        {
+            idx = static_cast<unsigned>(reg - ZYDIS_REGISTER_ZMM0);
+            width = 64;
+        }
+    }
+
+    static sfl::small_vector<std::uint8_t, 16> gatherWideReg(Context* ctx, ZydisRegister reg)
+    {
+        unsigned idx = 0, width = 0;
+        bool isMask = false;
+        wideRegLayout(reg, idx, width, isMask);
+
+        sfl::small_vector<std::uint8_t, 16> out(width, std::uint8_t{ 0 });
+
+        if (isMask)
+        {
+            if (auto* k = xstatePtr(ctx, XSTATE_AVX512_KMASK))
+                std::memcpy(out.data(), k + idx * 8, 8);
+            return out;
+        }
+
+        if (idx < 16)
+        {
+            std::memcpy(out.data(), &ctx->threadContext->FltSave.XmmRegisters[idx], 16);
+            if (width >= 32)
+                if (auto* avx = xstatePtr(ctx, XSTATE_AVX))
+                    std::memcpy(out.data() + 16, avx + idx * 16, 16);
+            if (width >= 64)
+                if (auto* zh = xstatePtr(ctx, XSTATE_AVX512_ZMM_H))
+                    std::memcpy(out.data() + 32, zh + idx * 32, 32);
+        }
+        else
+        {
+            if (auto* hi = xstatePtr(ctx, XSTATE_AVX512_ZMM))
+                std::memcpy(out.data(), hi + (idx - 16) * 64, width);
+        }
+        return out;
+    }
+
+    static void scatterWideReg(Context* ctx, ZydisRegister reg, std::span<const std::uint8_t> data)
+    {
+        unsigned idx = 0, width = 0;
+        bool isMask = false;
+        wideRegLayout(reg, idx, width, isMask);
+
+        const std::size_t n = data.size();
+
+        if (isMask)
+        {
+            if (auto* k = xstatePtr(ctx, XSTATE_AVX512_KMASK))
+                std::memcpy(k + idx * 8, data.data(), std::min<std::size_t>(8, n));
+            return;
+        }
+
+        if (idx < 16)
+        {
+            std::memcpy(&ctx->threadContext->FltSave.XmmRegisters[idx], data.data(), std::min<std::size_t>(16, n));
+            if (n > 16)
+                if (auto* avx = xstatePtr(ctx, XSTATE_AVX))
+                    std::memcpy(avx + idx * 16, data.data() + 16, std::min<std::size_t>(16, n - 16));
+            if (n > 32)
+                if (auto* zh = xstatePtr(ctx, XSTATE_AVX512_ZMM_H))
+                    std::memcpy(zh + idx * 32, data.data() + 32, std::min<std::size_t>(32, n - 32));
+        }
+        else
+        {
+            if (auto* hi = xstatePtr(ctx, XSTATE_AVX512_ZMM))
+                std::memcpy(hi + (idx - 16) * 64, data.data(), std::min<std::size_t>(width, n));
+        }
+    }
+
     bool setRegBytes(Context* ctx, ZydisRegister reg, std::span<const std::uint8_t> data)
     {
+        if (isWideOrMaskReg(reg))
+        {
+            scatterWideReg(ctx, reg, data);
+            return true;
+        }
+
         auto regData = getContextReg(ctx, reg);
         if (data.size() > regData.size())
         {
@@ -637,25 +770,31 @@ namespace x86Tester::Execution
         return true;
     }
 
-    std::span<const std::uint8_t> getRegBytes(Context* ctx, ZydisRegister reg)
+    sfl::small_vector<std::uint8_t, 16> getRegBytes(Context* ctx, ZydisRegister reg)
     {
-        return getContextReg(ctx, reg);
+        if (isWideOrMaskReg(reg))
+            return gatherWideReg(ctx, reg);
+
+        const auto s = getContextReg(ctx, reg);
+        return sfl::small_vector<std::uint8_t, 16>(s.begin(), s.end());
     }
 
     bool execute(Context* ctx)
     {
         ctx->status = ExecutionStatus::Idle;
 
-        ctx->threadContext.ContextFlags = ctx->contextFlags;
-        ctx->threadContext.Rip = ctx->codeBase + 1;
+        ctx->threadContext->ContextFlags = ctx->contextFlags;
+        if ((ctx->contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+            SetXStateFeaturesMask(ctx->threadContext, ctx->xstateMask & ~static_cast<DWORD64>(3));
+        ctx->threadContext->Rip = ctx->codeBase + 1;
 
         // Mark all x87 registers valid (non-empty) and force the stack top to 0, so in-place
         // x87 ops read their operands from the physical registers the harness mapped ST(i) to.
         // Without this the default FPU state tags every register empty and stack ops fault.
-        ctx->threadContext.FltSave.TagWord = 0xFF;
-        ctx->threadContext.FltSave.StatusWord &= 0xC7FF;
+        ctx->threadContext->FltSave.TagWord = 0xFF;
+        ctx->threadContext->FltSave.StatusWord &= 0xC7FF;
 
-        if (SetThreadContext(ctx->hThread, &ctx->threadContext) == FALSE)
+        if (SetThreadContext(ctx->hThread, ctx->threadContext) == FALSE)
         {
             fmt::print("SetThreadContext failed: {:X}\n", GetLastError());
             return false;
@@ -688,8 +827,10 @@ namespace x86Tester::Execution
                 break;
         }
 
-        ctx->threadContext.ContextFlags = ctx->contextFlags;
-        if (!GetThreadContext(ctx->hThread, &ctx->threadContext))
+        ctx->threadContext->ContextFlags = ctx->contextFlags;
+        if ((ctx->contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+            SetXStateFeaturesMask(ctx->threadContext, ctx->xstateMask & ~static_cast<DWORD64>(3));
+        if (!GetThreadContext(ctx->hThread, ctx->threadContext))
         {
             return false;
         }

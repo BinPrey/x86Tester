@@ -1183,8 +1183,9 @@ namespace x86Tester::Generator
         if (!isSupportedIsaExt(instr.info.meta.isa_ext))
             return false;
 
-        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX
-            || instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
+            return false;
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX && !Cpuid::getCpuInfo().avx512f)
             return false;
 
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
@@ -1201,12 +1202,18 @@ namespace x86Tester::Generator
                 switch (ZydisRegisterGetClass(op.reg.value))
                 {
                     case ZYDIS_REGCLASS_MMX:
-                    case ZYDIS_REGCLASS_YMM:
-                    case ZYDIS_REGCLASS_ZMM:
-                    case ZYDIS_REGCLASS_MASK:
                     case ZYDIS_REGCLASS_BOUND:
                     case ZYDIS_REGCLASS_TMM:
                         return false;
+                    case ZYDIS_REGCLASS_YMM:
+                        if (!Cpuid::getCpuInfo().avx2)
+                            return false;
+                        break;
+                    case ZYDIS_REGCLASS_ZMM:
+                    case ZYDIS_REGCLASS_MASK:
+                        if (!Cpuid::getCpuInfo().avx512f)
+                            return false;
+                        break;
                 }
 
                 const auto enclosing = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.reg.value);

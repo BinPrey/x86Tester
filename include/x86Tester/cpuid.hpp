@@ -21,6 +21,7 @@ namespace x86Tester::Cpuid
         bool sse4a : 1;
         bool avx : 1;
         bool avx2 : 1;
+        bool avx512f : 1;
         bool fma : 1;
         bool fma4 : 1;
         bool xop : 1;

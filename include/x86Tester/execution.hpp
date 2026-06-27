@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <sfl/small_vector.hpp>
 #include <span>
 
 namespace x86Tester::Execution
@@ -28,7 +29,7 @@ namespace x86Tester::Execution
 
     bool setRegBytes(Context* ctx, ZydisRegister reg, std::span<const std::uint8_t> data);
 
-    std::span<const uint8_t> getRegBytes(Context* ctx, ZydisRegister reg);
+    sfl::small_vector<std::uint8_t, 16> getRegBytes(Context* ctx, ZydisRegister reg);
 
     bool execute(Context* ctx);
 
@@ -87,7 +88,7 @@ namespace x86Tester::Execution
                 ctx, reg, std::span(reinterpret_cast<const std::uint8_t*>(&data), sizeof(T)));
         }
 
-        std::span<const uint8_t> getRegBytes(ZydisRegister reg) const
+        sfl::small_vector<std::uint8_t, 16> getRegBytes(ZydisRegister reg) const
         {
             return x86Tester::Execution::getRegBytes(ctx, reg);
         }

@@ -665,6 +665,138 @@ namespace x86Tester::Generator
         }
     };
 
+
+    static bool isSupportedInstruction(const ZydisDisassembledInstruction& instr)
+    {
+        if ((instr.info.attributes & ZYDIS_ATTRIB_IS_PRIVILEGED) != 0)
+            return false;
+
+        if (!isSupportedCategory(instr.info.meta.category))
+            return false;
+
+        // APX uses the extended GPRs R16-R31, which the harness CONTEXT has no storage for.
+        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
+            return false;
+
+        if (!isSupportedIsaExt(instr.info.meta.isa_ext))
+            return false;
+
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
+            return false;
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX && !Cpuid::getCpuInfo().avx512f)
+            return false;
+
+        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+        {
+            const auto& op = instr.operands[i];
+            // A hidden memory operand the harness can't set up disqualifies the instruction, but an
+            // AGEN operand only computes an address (its base/index registers are read, never the
+            // memory itself), so it is fine.
+            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN
+                && op.visibility == ZYDIS_OPERAND_VISIBILITY_HIDDEN)
+                return false;
+            if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
+            {
+                switch (ZydisRegisterGetClass(op.reg.value))
+                {
+                    case ZYDIS_REGCLASS_MMX:
+                    case ZYDIS_REGCLASS_BOUND:
+                    case ZYDIS_REGCLASS_TMM:
+                        return false;
+                    case ZYDIS_REGCLASS_YMM:
+                        if (!Cpuid::getCpuInfo().avx2)
+                            return false;
+                        break;
+                    case ZYDIS_REGCLASS_ZMM:
+                    case ZYDIS_REGCLASS_MASK:
+                        if (!Cpuid::getCpuInfo().avx512f)
+                            return false;
+                        break;
+                }
+
+                const auto enclosing = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.reg.value);
+                if (enclosing >= ZYDIS_REGISTER_R16 && enclosing <= ZYDIS_REGISTER_R31)
+                    return false;
+            }
+        }
+
+        switch (instr.info.mnemonic)
+        {
+            case ZYDIS_MNEMONIC_CLI:
+            case ZYDIS_MNEMONIC_STI:
+            case ZYDIS_MNEMONIC_CPUID:
+            case ZYDIS_MNEMONIC_RDTSC:
+            case ZYDIS_MNEMONIC_RDTSCP:
+            case ZYDIS_MNEMONIC_RDPMC:
+            case ZYDIS_MNEMONIC_RDRAND:
+            case ZYDIS_MNEMONIC_RDSEED:
+            case ZYDIS_MNEMONIC_RDPID:
+            case ZYDIS_MNEMONIC_RDPRU:
+            case ZYDIS_MNEMONIC_RDFSBASE:
+            case ZYDIS_MNEMONIC_RDGSBASE:
+            case ZYDIS_MNEMONIC_WRFSBASE:
+            case ZYDIS_MNEMONIC_WRGSBASE:
+            case ZYDIS_MNEMONIC_SLDT:
+            case ZYDIS_MNEMONIC_STR:
+            case ZYDIS_MNEMONIC_SGDT:
+            case ZYDIS_MNEMONIC_SIDT:
+            case ZYDIS_MNEMONIC_SMSW:
+            case ZYDIS_MNEMONIC_UD0:
+            case ZYDIS_MNEMONIC_UD1:
+            case ZYDIS_MNEMONIC_UD2:
+            case ZYDIS_MNEMONIC_XGETBV:
+            case ZYDIS_MNEMONIC_XTEST:
+                return false;
+
+            // x87 instructions that push or pop the FPU stack change TOP, which breaks the
+            // harness's static ST(i) -> physical-register mapping. They can't be captured
+            // correctly here, so filter them. In-place x87 ops (FADD/FSUB/FABS/FCOM/...) are fine.
+            case ZYDIS_MNEMONIC_FLD:
+            case ZYDIS_MNEMONIC_FLD1:
+            case ZYDIS_MNEMONIC_FLDZ:
+            case ZYDIS_MNEMONIC_FLDL2T:
+            case ZYDIS_MNEMONIC_FLDL2E:
+            case ZYDIS_MNEMONIC_FLDPI:
+            case ZYDIS_MNEMONIC_FLDLG2:
+            case ZYDIS_MNEMONIC_FLDLN2:
+            case ZYDIS_MNEMONIC_FILD:
+            case ZYDIS_MNEMONIC_FBLD:
+            case ZYDIS_MNEMONIC_FST:
+            case ZYDIS_MNEMONIC_FSTP:
+            case ZYDIS_MNEMONIC_FSTPNCE:
+            case ZYDIS_MNEMONIC_FIST:
+            case ZYDIS_MNEMONIC_FISTP:
+            case ZYDIS_MNEMONIC_FISTTP:
+            case ZYDIS_MNEMONIC_FBSTP:
+            case ZYDIS_MNEMONIC_FADDP:
+            case ZYDIS_MNEMONIC_FSUBP:
+            case ZYDIS_MNEMONIC_FSUBRP:
+            case ZYDIS_MNEMONIC_FMULP:
+            case ZYDIS_MNEMONIC_FDIVP:
+            case ZYDIS_MNEMONIC_FDIVRP:
+            case ZYDIS_MNEMONIC_FCOMP:
+            case ZYDIS_MNEMONIC_FCOMPP:
+            case ZYDIS_MNEMONIC_FUCOMP:
+            case ZYDIS_MNEMONIC_FUCOMPP:
+            case ZYDIS_MNEMONIC_FICOMP:
+            case ZYDIS_MNEMONIC_FCOMIP:
+            case ZYDIS_MNEMONIC_FUCOMIP:
+            case ZYDIS_MNEMONIC_FYL2X:
+            case ZYDIS_MNEMONIC_FYL2XP1:
+            case ZYDIS_MNEMONIC_FPATAN:
+            case ZYDIS_MNEMONIC_FPTAN:
+            case ZYDIS_MNEMONIC_FSINCOS:
+            case ZYDIS_MNEMONIC_FXTRACT:
+            case ZYDIS_MNEMONIC_FINCSTP:
+            case ZYDIS_MNEMONIC_FDECSTP:
+            case ZYDIS_MNEMONIC_FFREE:
+            case ZYDIS_MNEMONIC_FFREEP:
+                return false;
+        }
+
+        return true;
+    }
+
     template<bool TBuildInParallel>
     InstructionEntries buildInstructionsImpl(ZydisMachineMode mode, const Filter& filter, ProgressReportFn reporter)
     {
@@ -684,7 +816,10 @@ namespace x86Tester::Generator
                 auto encodeRes = checkEncode(req, mode);
                 bool isValid = encodeRes.status == ZYAN_STATUS_SUCCESS;
 
-                if (isValid)
+                ZydisDisassembledInstruction dis;
+                if (isValid
+                    && ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, encodeRes.buf, encodeRes.size, &dis))
+                    && isSupportedInstruction(dis))
                 {
                     CondLockGuard<TBuildInParallel> lock(mtx);
 
@@ -1210,146 +1345,12 @@ namespace x86Tester::Generator
         return false;
     }
 
-    static bool isSupportedInstruction(const ZydisDisassembledInstruction& instr)
-    {
-        if ((instr.info.attributes & ZYDIS_ATTRIB_IS_PRIVILEGED) != 0)
-            return false;
-
-        if (!isSupportedCategory(instr.info.meta.category))
-            return false;
-
-        // APX uses the extended GPRs R16-R31, which the harness CONTEXT has no storage for.
-        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
-            return false;
-
-        if (!isSupportedIsaExt(instr.info.meta.isa_ext))
-            return false;
-
-        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
-            return false;
-        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX && !Cpuid::getCpuInfo().avx512f)
-            return false;
-
-        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
-        {
-            const auto& op = instr.operands[i];
-            // A hidden memory operand the harness can't set up disqualifies the instruction, but an
-            // AGEN operand only computes an address (its base/index registers are read, never the
-            // memory itself), so it is fine.
-            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN
-                && op.visibility == ZYDIS_OPERAND_VISIBILITY_HIDDEN)
-                return false;
-            if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
-            {
-                switch (ZydisRegisterGetClass(op.reg.value))
-                {
-                    case ZYDIS_REGCLASS_MMX:
-                    case ZYDIS_REGCLASS_BOUND:
-                    case ZYDIS_REGCLASS_TMM:
-                        return false;
-                    case ZYDIS_REGCLASS_YMM:
-                        if (!Cpuid::getCpuInfo().avx2)
-                            return false;
-                        break;
-                    case ZYDIS_REGCLASS_ZMM:
-                    case ZYDIS_REGCLASS_MASK:
-                        if (!Cpuid::getCpuInfo().avx512f)
-                            return false;
-                        break;
-                }
-
-                const auto enclosing = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.reg.value);
-                if (enclosing >= ZYDIS_REGISTER_R16 && enclosing <= ZYDIS_REGISTER_R31)
-                    return false;
-            }
-        }
-
-        switch (instr.info.mnemonic)
-        {
-            case ZYDIS_MNEMONIC_CLI:
-            case ZYDIS_MNEMONIC_STI:
-            case ZYDIS_MNEMONIC_CPUID:
-            case ZYDIS_MNEMONIC_RDTSC:
-            case ZYDIS_MNEMONIC_RDTSCP:
-            case ZYDIS_MNEMONIC_RDPMC:
-            case ZYDIS_MNEMONIC_RDRAND:
-            case ZYDIS_MNEMONIC_RDSEED:
-            case ZYDIS_MNEMONIC_RDPID:
-            case ZYDIS_MNEMONIC_RDPRU:
-            case ZYDIS_MNEMONIC_RDFSBASE:
-            case ZYDIS_MNEMONIC_RDGSBASE:
-            case ZYDIS_MNEMONIC_WRFSBASE:
-            case ZYDIS_MNEMONIC_WRGSBASE:
-            case ZYDIS_MNEMONIC_SLDT:
-            case ZYDIS_MNEMONIC_STR:
-            case ZYDIS_MNEMONIC_SGDT:
-            case ZYDIS_MNEMONIC_SIDT:
-            case ZYDIS_MNEMONIC_SMSW:
-            case ZYDIS_MNEMONIC_UD0:
-            case ZYDIS_MNEMONIC_UD1:
-            case ZYDIS_MNEMONIC_UD2:
-            case ZYDIS_MNEMONIC_XGETBV:
-            case ZYDIS_MNEMONIC_XTEST:
-                return false;
-
-            // x87 instructions that push or pop the FPU stack change TOP, which breaks the
-            // harness's static ST(i) -> physical-register mapping. They can't be captured
-            // correctly here, so filter them. In-place x87 ops (FADD/FSUB/FABS/FCOM/...) are fine.
-            case ZYDIS_MNEMONIC_FLD:
-            case ZYDIS_MNEMONIC_FLD1:
-            case ZYDIS_MNEMONIC_FLDZ:
-            case ZYDIS_MNEMONIC_FLDL2T:
-            case ZYDIS_MNEMONIC_FLDL2E:
-            case ZYDIS_MNEMONIC_FLDPI:
-            case ZYDIS_MNEMONIC_FLDLG2:
-            case ZYDIS_MNEMONIC_FLDLN2:
-            case ZYDIS_MNEMONIC_FILD:
-            case ZYDIS_MNEMONIC_FBLD:
-            case ZYDIS_MNEMONIC_FST:
-            case ZYDIS_MNEMONIC_FSTP:
-            case ZYDIS_MNEMONIC_FSTPNCE:
-            case ZYDIS_MNEMONIC_FIST:
-            case ZYDIS_MNEMONIC_FISTP:
-            case ZYDIS_MNEMONIC_FISTTP:
-            case ZYDIS_MNEMONIC_FBSTP:
-            case ZYDIS_MNEMONIC_FADDP:
-            case ZYDIS_MNEMONIC_FSUBP:
-            case ZYDIS_MNEMONIC_FSUBRP:
-            case ZYDIS_MNEMONIC_FMULP:
-            case ZYDIS_MNEMONIC_FDIVP:
-            case ZYDIS_MNEMONIC_FDIVRP:
-            case ZYDIS_MNEMONIC_FCOMP:
-            case ZYDIS_MNEMONIC_FCOMPP:
-            case ZYDIS_MNEMONIC_FUCOMP:
-            case ZYDIS_MNEMONIC_FUCOMPP:
-            case ZYDIS_MNEMONIC_FICOMP:
-            case ZYDIS_MNEMONIC_FCOMIP:
-            case ZYDIS_MNEMONIC_FUCOMIP:
-            case ZYDIS_MNEMONIC_FYL2X:
-            case ZYDIS_MNEMONIC_FYL2XP1:
-            case ZYDIS_MNEMONIC_FPATAN:
-            case ZYDIS_MNEMONIC_FPTAN:
-            case ZYDIS_MNEMONIC_FSINCOS:
-            case ZYDIS_MNEMONIC_FXTRACT:
-            case ZYDIS_MNEMONIC_FINCSTP:
-            case ZYDIS_MNEMONIC_FDECSTP:
-            case ZYDIS_MNEMONIC_FFREE:
-            case ZYDIS_MNEMONIC_FFREEP:
-                return false;
-        }
-
-        return true;
-    }
-
     static void testInstruction(ZydisMachineMode mode, InstrTestGroup& testCase)
     {
         auto& instrData = testCase.instrData;
 
         ZydisDisassembledInstruction instr{};
         ZydisDisassembleIntel(mode, 0, instrData.data(), instrData.size(), &instr);
-
-        if (!isSupportedInstruction(instr))
-            return;
 
         const auto isInputImmediate = isInputFromImmediate(instr);
         const auto maxAttempts = isInputImmediate ? kAbortTestCaseThreshold / 3 : kAbortTestCaseThreshold;

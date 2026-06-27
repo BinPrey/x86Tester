@@ -689,11 +689,10 @@ namespace x86Tester::Generator
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];
-            // A hidden memory operand the harness can't set up disqualifies the instruction, but an
+            // A memory read/write operand the harness can't set up disqualifies the instruction, but an
             // AGEN operand only computes an address (its base/index registers are read, never the
             // memory itself), so it is fine.
-            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN
-                && op.visibility == ZYDIS_OPERAND_VISIBILITY_HIDDEN)
+            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN)
                 return false;
             if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
             {

@@ -202,18 +202,19 @@ static std::optional<std::size_t> generateInstrTests(
     const auto filePath = getPathForMnemonic(mnemonic, outputPath);
     const double pct = total > 0 ? (100.0 * (index + 1) / static_cast<double>(total)) : 0.0;
 
+    const std::string mnemonicStr = ZydisMnemonicGetString(mnemonic);
+
     if (!force && std::filesystem::exists(filePath))
     {
-        fmt::print("[{}/{} {:5.1f}%] {} (skipped)\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
+        fmt::print("[{}/{} {:5.1f}%] {} (skipped, already exists)\n", index + 1, total, pct, mnemonicStr);
         return std::nullopt;
     }
 
-    fmt::print("[{}/{} {:5.1f}%] {}\n", index + 1, total, pct, ZydisMnemonicGetString(mnemonic));
+    fmt::print("[{}/{} {:5.1f}%] {}\n", index + 1, total, pct, mnemonicStr);
 
     const auto filter = Generator::Filter{}.addMnemonics(mnemonic);
 
-    Logging::startProgress(
-        "Building \"{}\" instruction combinations", ZydisMnemonicGetString(static_cast<ZydisMnemonic>(mnemonic)));
+    Logging::startProgress("Building \"{}\" instruction combinations", mnemonicStr);
 
     const auto instrs = Generator::buildInstructions(
         mode, filter, true, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
@@ -221,8 +222,13 @@ static std::optional<std::size_t> generateInstrTests(
     Logging::endProgress();
 
     const auto numInstrs = instrs.entryOffsets.size();
-    Logging::println("Total instructions: {}", numInstrs);
+    if (numInstrs == 0)
+    {
+        Logging::println("No instructions generated, unsupported by host or memory access.");
+        return std::nullopt;
+    }
 
+    Logging::println("Total instructions: {}", numInstrs);
     Logging::startProgress("Generating tests");
 
     std::vector<InstrTestGroup> testGroups;
@@ -513,8 +519,7 @@ int main(int argc, char** argv)
     std::size_t skipped = 0;
     for (std::size_t i = 0; i < finalList.size(); ++i)
     {
-        Logging::setTitleStatus(
-            fmt::format("{}/{} | {}", i + 1, finalList.size(), ZydisMnemonicGetString(finalList[i])));
+        Logging::setTitleStatus(fmt::format("{}/{} | {}", i + 1, finalList.size(), ZydisMnemonicGetString(finalList[i])));
 
         const auto tests = generateInstrTests(mode, finalList[i], outputPath, force, i, finalList.size());
         if (tests.has_value())

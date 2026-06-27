@@ -801,6 +801,48 @@ namespace x86Tester::Generator
                 return info.fma4;
             case ZYDIS_ISA_EXT_TBM:
                 return info.tbm;
+            case ZYDIS_ISA_EXT_GFNI:
+                return info.gfni;
+            case ZYDIS_ISA_EXT_VAES:
+                return info.vaes;
+            case ZYDIS_ISA_EXT_VPCLMULQDQ:
+                return info.vpclmulqdq;
+            case ZYDIS_ISA_EXT_AVX_VNNI:
+                return info.avxvnni;
+            case ZYDIS_ISA_EXT_SHA:
+                return info.sha;
+            case ZYDIS_ISA_EXT_SHA512:
+                return info.sha512;
+            case ZYDIS_ISA_EXT_SM3:
+                return info.sm3;
+            case ZYDIS_ISA_EXT_SM4:
+                return info.sm4;
+            case ZYDIS_ISA_EXT_AVX_IFMA:
+                return info.avxifma;
+            case ZYDIS_ISA_EXT_AVX_NE_CONVERT:
+                return info.avxneconvert;
+            case ZYDIS_ISA_EXT_AVX_VNNI_INT8:
+                return info.avxvnniint8;
+            case ZYDIS_ISA_EXT_AVX_VNNI_INT16:
+                return info.avxvnniint16;
+            case ZYDIS_ISA_EXT_CET:
+                return info.cet;
+            case ZYDIS_ISA_EXT_PKU:
+                return info.pku;
+            case ZYDIS_ISA_EXT_KEYLOCKER:
+            case ZYDIS_ISA_EXT_KEYLOCKER_WIDE:
+                return info.keylocker;
+            case ZYDIS_ISA_EXT_MOVDIR:
+                return info.movdir;
+            case ZYDIS_ISA_EXT_ENQCMD:
+                return info.enqcmd;
+            case ZYDIS_ISA_EXT_SERIALIZE:
+                return info.serialize;
+            case ZYDIS_ISA_EXT_AMX_TILE:
+            case ZYDIS_ISA_EXT_AMX_INT8:
+            case ZYDIS_ISA_EXT_AMX_BF16:
+            case ZYDIS_ISA_EXT_AMX_FP16:
+                return info.amx;
             default:
                 return true;
         }

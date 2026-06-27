@@ -103,6 +103,26 @@ namespace x86Tester::Cpuid
             info.rdseed = (r[1] & (1u << 18)) != 0;
             info.adx = (r[1] & (1u << 19)) != 0;
             info.sha = (r[1] & (1u << 29)) != 0;
+            info.gfni = (r[2] & (1u << 8)) != 0;
+            info.vaes = (r[2] & (1u << 9)) != 0;
+            info.vpclmulqdq = (r[2] & (1u << 10)) != 0;
+            info.pku = (r[2] & (1u << 3)) != 0;
+            info.cet = (r[2] & (1u << 7)) != 0;
+            info.keylocker = (r[2] & (1u << 23)) != 0;
+            info.movdir = (r[2] & ((1u << 27) | (1u << 28))) != 0;
+            info.enqcmd = (r[2] & (1u << 29)) != 0;
+            info.serialize = (r[3] & (1u << 14)) != 0;
+            info.amx = (r[3] & ((1u << 22) | (1u << 24) | (1u << 25))) != 0;
+
+            cpuid(7u, 1, r);
+            info.avxvnni = (r[0] & (1u << 4)) != 0;
+            info.sha512 = (r[0] & (1u << 0)) != 0;
+            info.sm3 = (r[0] & (1u << 1)) != 0;
+            info.sm4 = (r[0] & (1u << 2)) != 0;
+            info.avxifma = (r[0] & (1u << 23)) != 0;
+            info.avxvnniint8 = (r[3] & (1u << 4)) != 0;
+            info.avxneconvert = (r[3] & (1u << 5)) != 0;
+            info.avxvnniint16 = (r[3] & (1u << 10)) != 0;
 
             std::uint32_t ext[4] = {};
             cpuid(0x80000000u, 0, ext);

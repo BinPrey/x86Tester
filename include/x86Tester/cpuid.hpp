@@ -38,6 +38,24 @@ namespace x86Tester::Cpuid
         bool adx : 1;
         bool rdrand : 1;
         bool rdseed : 1;
+        bool gfni : 1;
+        bool vaes : 1;
+        bool vpclmulqdq : 1;
+        bool avxvnni : 1;
+        bool sha512 : 1;
+        bool sm3 : 1;
+        bool sm4 : 1;
+        bool avxifma : 1;
+        bool avxneconvert : 1;
+        bool avxvnniint8 : 1;
+        bool avxvnniint16 : 1;
+        bool cet : 1;
+        bool pku : 1;
+        bool keylocker : 1;
+        bool movdir : 1;
+        bool enqcmd : 1;
+        bool serialize : 1;
+        bool amx : 1;
     };
 
     const CpuInfo& getCpuInfo();

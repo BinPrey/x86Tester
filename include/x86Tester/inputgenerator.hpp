@@ -198,13 +198,14 @@ namespace x86Tester::Generator
             return res;
         }
 
-        static std::vector<std::vector<std::uint8_t>> generateXmmNumbers()
+        static std::vector<std::vector<std::uint8_t>> generateVecNumbers(std::size_t byteSize)
         {
+            const std::size_t bitSize = byteSize * 8;
             std::vector<std::vector<std::uint8_t>> res;
 
             // All bits set.
             {
-                std::vector<std::uint8_t> bytes(16, 0xFF);
+                std::vector<std::uint8_t> bytes(byteSize, 0xFF);
                 res.push_back(std::move(bytes));
             }
 
@@ -212,8 +213,8 @@ namespace x86Tester::Generator
             // for results like PMADDWD reaching 2^31 only when both words are -32768.
             for (const std::size_t laneBits : { std::size_t{ 8 }, std::size_t{ 16 }, std::size_t{ 32 }, std::size_t{ 64 } })
             {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t bit = laneBits - 1; bit < 128; bit += laneBits)
+                std::vector<std::uint8_t> bytes(byteSize, 0);
+                for (std::size_t bit = laneBits - 1; bit < bitSize; bit += laneBits)
                     bytes[bit / 8] |= static_cast<std::uint8_t>(1u << (bit % 8));
                 res.push_back(std::move(bytes));
             }
@@ -222,7 +223,7 @@ namespace x86Tester::Generator
             // including the self-shift case where the count and shifted data are one register.
             for (std::uint64_t c = 0; c <= 63; ++c)
             {
-                std::vector<std::uint8_t> bytes(16, 0);
+                std::vector<std::uint8_t> bytes(byteSize, 0);
                 std::memcpy(bytes.data(), &c, sizeof(c));
                 res.push_back(std::move(bytes));
             }
@@ -232,53 +233,23 @@ namespace x86Tester::Generator
             // lane, not just the low one, to take each small count.
             for (std::uint32_t c = 0; c <= 31; ++c)
             {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t lane = 0; lane < 4; ++lane)
+                std::vector<std::uint8_t> bytes(byteSize, 0);
+                for (std::size_t lane = 0; lane < byteSize / 4; ++lane)
                     std::memcpy(bytes.data() + lane * 4, &c, sizeof(c));
                 res.push_back(std::move(bytes));
             }
             for (std::uint64_t c = 0; c <= 63; ++c)
             {
-                std::vector<std::uint8_t> bytes(16, 0);
-                std::memcpy(bytes.data(), &c, sizeof(c));
-                std::memcpy(bytes.data() + 8, &c, sizeof(c));
+                std::vector<std::uint8_t> bytes(byteSize, 0);
+                for (std::size_t lane = 0; lane < byteSize / 8; ++lane)
+                    std::memcpy(bytes.data() + lane * 8, &c, sizeof(c));
                 res.push_back(std::move(bytes));
             }
 
-            // 0-31 set.
+            for (std::size_t range = 0; range < bitSize / 32; ++range)
             {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t i = 0; i < 32; i++)
-                {
-                    bytes[i / 8] |= 1 << (i % 8);
-                }
-                res.push_back(std::move(bytes));
-            }
-
-            // 32-63 set.
-            {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t i = 32; i < 64; i++)
-                {
-                    bytes[i / 8] |= 1 << (i % 8);
-                }
-                res.push_back(std::move(bytes));
-            }
-
-            // 64-95 set.
-            {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t i = 64; i < 96; i++)
-                {
-                    bytes[i / 8] |= 1 << (i % 8);
-                }
-                res.push_back(std::move(bytes));
-            }
-
-            // 96-127 set.
-            {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t i = 96; i < 128; i++)
+                std::vector<std::uint8_t> bytes(byteSize, 0);
+                for (std::size_t i = range * 32; i < range * 32 + 32; i++)
                 {
                     bytes[i / 8] |= 1 << (i % 8);
                 }
@@ -287,8 +258,8 @@ namespace x86Tester::Generator
 
             // Every second bit set.
             {
-                std::vector<std::uint8_t> bytes(16, 0);
-                for (std::size_t i = 0; i < 128; i += 2)
+                std::vector<std::uint8_t> bytes(byteSize, 0);
+                for (std::size_t i = 0; i < bitSize; i += 2)
                 {
                     bytes[i / 8] |= 1 << (i % 8);
                 }
@@ -297,7 +268,7 @@ namespace x86Tester::Generator
 
             // Special values.
             {
-                std::vector<std::uint8_t> bytes(16, 0);
+                std::vector<std::uint8_t> bytes(byteSize, 0);
 
                 const std::uint64_t val = 0xFFFFFFFFFF8000FF;
 
@@ -312,11 +283,13 @@ namespace x86Tester::Generator
                 std::uniform_real_distribution<float> dist(-99999.0f, 99999.0f);
                 for (size_t i = 0; i < 64; i++)
                 {
-                    std::vector<std::uint8_t> bytes(16);
+                    std::vector<std::uint8_t> bytes(byteSize);
 
-                    const float val[4] = { dist(prng), dist(prng), dist(prng), dist(prng) };
-
-                    std::memcpy(bytes.data(), val, sizeof(val));
+                    for (std::size_t lane = 0; lane < byteSize / 4; ++lane)
+                    {
+                        const float v = dist(prng);
+                        std::memcpy(bytes.data() + lane * 4, &v, sizeof(v));
+                    }
 
                     res.push_back(std::move(bytes));
                 }
@@ -330,11 +303,12 @@ namespace x86Tester::Generator
                     {
                         for (std::uint32_t d0 = 0; d0 < 4; d0++)
                         {
-                            std::vector<std::uint8_t> bytes(16);
+                            std::vector<std::uint8_t> bytes(byteSize);
 
                             const std::uint32_t val[4] = { a0 * 9, b0 * 2147483647, c0 * 3, d0 * 9 };
 
-                            std::memcpy(bytes.data(), val, sizeof(val));
+                            for (std::size_t lane = 0; lane < byteSize / 4; ++lane)
+                                std::memcpy(bytes.data() + lane * 4, &val[lane % 4], sizeof(std::uint32_t));
 
                             res.push_back(std::move(bytes));
                         }
@@ -347,6 +321,11 @@ namespace x86Tester::Generator
             res.erase(std::unique(res.begin(), res.end()), res.end());
 
             return res;
+        }
+
+        static std::vector<std::vector<std::uint8_t>> generateXmmNumbers()
+        {
+            return generateVecNumbers(16);
         }
 
         template<std::size_t TBitSize> std::vector<std::vector<std::uint8_t>> generateNumbers()
@@ -445,6 +424,10 @@ namespace x86Tester::Generator
         static const auto kMagicNumbers64b = generateIntegers<std::int64_t>();
 
         static const auto kMagicNumbers128b = generateXmmNumbers();
+
+        static const auto kMagicNumbers256b = generateVecNumbers(32);
+
+        static const auto kMagicNumbers512b = generateVecNumbers(64);
 
         static const auto kMagicNumbers80b = generateExtended80();
 
@@ -632,6 +615,22 @@ namespace x86Tester::Generator
             {
                 const auto valueBytes = Detail::kMagicNumbers128b[_counter % std::size(Detail::kMagicNumbers128b)];
                 if (++_counter >= std::size(Detail::kMagicNumbers128b))
+                    nextStrat = true;
+
+                std::copy(valueBytes.begin(), valueBytes.end(), _data.begin());
+            }
+            else if (_maxBits == 256)
+            {
+                const auto& valueBytes = Detail::kMagicNumbers256b[_counter % std::size(Detail::kMagicNumbers256b)];
+                if (++_counter >= std::size(Detail::kMagicNumbers256b))
+                    nextStrat = true;
+
+                std::copy(valueBytes.begin(), valueBytes.end(), _data.begin());
+            }
+            else if (_maxBits == 512)
+            {
+                const auto& valueBytes = Detail::kMagicNumbers512b[_counter % std::size(Detail::kMagicNumbers512b)];
+                if (++_counter >= std::size(Detail::kMagicNumbers512b))
                     nextStrat = true;
 
                 std::copy(valueBytes.begin(), valueBytes.end(), _data.begin());

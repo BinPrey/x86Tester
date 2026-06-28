@@ -436,6 +436,27 @@ namespace x86Tester::Generator
         return 0;
     }
 
+    static unsigned unsignedConvSignLane(ZydisMnemonic mnemonic, bool& scalar)
+    {
+        scalar = false;
+        switch (mnemonic)
+        {
+            case ZYDIS_MNEMONIC_VCVTUSI2SS:
+                scalar = true;
+                return 32;
+            case ZYDIS_MNEMONIC_VCVTUSI2SD:
+                scalar = true;
+                return 64;
+            case ZYDIS_MNEMONIC_VCVTUDQ2PS:
+            case ZYDIS_MNEMONIC_VCVTUQQ2PS:
+                return 32;
+            case ZYDIS_MNEMONIC_VCVTUDQ2PD:
+            case ZYDIS_MNEMONIC_VCVTUQQ2PD:
+                return 64;
+        }
+        return 0;
+    }
+
     // For a left-shift of a lane by its own value (the self-shift case), the only reachable lane
     // values are c<<c for c in [0, laneWidth). Returns the OR of those, i.e. the bits that can be 1.
     static std::uint64_t selfShlReachableMask(unsigned laneWidth)
@@ -1150,6 +1171,8 @@ namespace x86Tester::Generator
 
         bool fpConvPacked = true;
         const unsigned fpConvZeroLow = fpConvZeroLowPerLane(instr, fpConvPacked);
+        bool convSignScalar = false;
+        const unsigned convSignLaneWidth = unsignedConvSignLane(instr.info.mnemonic, convSignScalar);
 
         bool alwaysFaults = false;
         if (instr.info.mnemonic == ZYDIS_MNEMONIC_DIV || instr.info.mnemonic == ZYDIS_MNEMONIC_IDIV)
@@ -1383,6 +1406,10 @@ namespace x86Tester::Generator
                     testOne = false;
 
                 if (fpConvZeroLow > 0 && (fpConvPacked ? (bitPos % 64) : bitPos) < fpConvZeroLow)
+                    testOne = false;
+
+                if (convSignLaneWidth != 0 && (bitPos % convSignLaneWidth) == convSignLaneWidth - 1
+                    && (!convSignScalar || bitPos < convSignLaneWidth))
                     testOne = false;
 
                 if (regModified == ZYDIS_REGISTER_X87STATUS)

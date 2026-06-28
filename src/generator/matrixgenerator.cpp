@@ -407,6 +407,8 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_VCVTDQ2PD:
             case ZYDIS_MNEMONIC_CVTPI2PD:
                 return 22;
+            case ZYDIS_MNEMONIC_VCVTUDQ2PD:
+                return 21;
             case ZYDIS_MNEMONIC_CVTPS2PD:
             case ZYDIS_MNEMONIC_VCVTPS2PD:
                 return 29;
@@ -416,18 +418,20 @@ namespace x86Tester::Generator
                 return 29;
             case ZYDIS_MNEMONIC_CVTSI2SD:
             case ZYDIS_MNEMONIC_VCVTSI2SD:
+            case ZYDIS_MNEMONIC_VCVTUSI2SD:
             {
                 packed = false;
+                const unsigned lowZero = instr.info.mnemonic == ZYDIS_MNEMONIC_VCVTUSI2SD ? 21 : 22;
                 for (std::size_t i = 0; i < instr.info.operand_count; ++i)
                 {
                     const auto& op = instr.operands[i];
                     if (op.type == ZYDIS_OPERAND_TYPE_MEMORY)
-                        return op.size == 32 ? 22 : 0;
+                        return op.size == 32 ? lowZero : 0;
                     if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
                     {
                         const auto cls = ZydisRegisterGetClass(op.reg.value);
                         if (cls == ZYDIS_REGCLASS_GPR32 || cls == ZYDIS_REGCLASS_GPR64)
-                            return op.size == 32 ? 22 : 0;
+                            return op.size == 32 ? lowZero : 0;
                     }
                 }
                 return 0;

@@ -23,6 +23,7 @@ extern "C" {
 #include <sfl/small_flat_set.hpp>
 #include <sfl/static_vector.hpp>
 #include <span>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <x86Tester/execution.hpp>
@@ -852,6 +853,61 @@ namespace x86Tester::Generator
         return res;
     }
 
+    static std::size_t getRegOffset(ZydisRegister reg);
+
+    static std::string behaviorKey(const ZydisDisassembledInstruction& d)
+    {
+        std::string key;
+        key += std::to_string(static_cast<int>(d.info.mnemonic));
+        key += ':';
+        key += std::to_string(static_cast<int>(d.info.encoding));
+        key += ':';
+        key += std::to_string(static_cast<int>(d.info.opcode_map));
+        key += '.';
+        key += std::to_string(static_cast<int>(d.info.opcode));
+
+        sfl::static_vector<ZydisRegister, 12> slots;
+        for (std::size_t i = 0; i < d.info.operand_count; ++i)
+        {
+            const auto& op = d.operands[i];
+            key += ';';
+            if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
+            {
+                int slot = -1;
+                for (std::size_t s = 0; s < slots.size(); ++s)
+                    if (slots[s] == op.reg.value)
+                    {
+                        slot = static_cast<int>(s);
+                        break;
+                    }
+                if (slot < 0)
+                {
+                    slot = static_cast<int>(slots.size());
+                    slots.push_back(op.reg.value);
+                }
+                key += 'R';
+                key += std::to_string(static_cast<int>(ZydisRegisterGetClass(op.reg.value)));
+                key += '.';
+                key += std::to_string(static_cast<int>(getRegOffset(op.reg.value)));
+                key += '.';
+                key += std::to_string(slot);
+            }
+            else if (op.type == ZYDIS_OPERAND_TYPE_IMMEDIATE)
+            {
+                key += 'I';
+                key += std::to_string(op.imm.value.u);
+            }
+            else if (op.type == ZYDIS_OPERAND_TYPE_MEMORY)
+            {
+                key += 'M';
+                key += std::to_string(static_cast<int>(op.mem.type));
+                key += '.';
+                key += std::to_string(op.size);
+            }
+        }
+        return key;
+    }
+
     InstructionEntries buildInstructions(
         ZydisMachineMode mode, const Filter& filter, bool buildInParallel, ProgressReportFn reporter)
     {
@@ -1635,6 +1691,102 @@ namespace x86Tester::Generator
         std::sort(testCase.entries.begin(), testCase.entries.end());
 
         return testCase;
+    }
+
+    static InstrTestGroup relabelGroup(
+        ZydisMachineMode mode, const InstrTestGroup& rep, std::span<const std::uint8_t> repBytes,
+        std::span<const std::uint8_t> varBytes)
+    {
+        InstrTestGroup out = rep;
+        out.instrData = varBytes;
+        out.totalAttempts = 0;
+
+        ZydisDisassembledInstruction dr{};
+        ZydisDisassembledInstruction dv{};
+        ZydisDisassembleIntel(mode, 0, repBytes.data(), repBytes.size(), &dr);
+        ZydisDisassembleIntel(mode, 0, varBytes.data(), varBytes.size(), &dv);
+
+        sfl::small_flat_map<ZydisRegister, ZydisRegister, 4> rootMap;
+        for (std::size_t i = 0; i < dr.info.operand_count && i < dv.info.operand_count; ++i)
+        {
+            if (dr.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER
+                && dv.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER)
+                rootMap[getRootReg(mode, dr.operands[i].reg.value)] = getRootReg(mode, dv.operands[i].reg.value);
+        }
+
+        const auto remap = [&](sfl::small_flat_map<ZydisRegister, RegTestData, 2>& regs) {
+            sfl::small_flat_map<ZydisRegister, RegTestData, 2> next;
+            for (auto& [reg, data] : regs)
+            {
+                const auto it = rootMap.find(reg);
+                next[it != rootMap.end() ? it->second : reg] = data;
+            }
+            regs = std::move(next);
+        };
+
+        for (auto& entry : out.entries)
+        {
+            remap(entry.inputRegs);
+            remap(entry.outputRegs);
+        }
+        return out;
+    }
+
+    std::vector<InstrTestGroup> generateGroupedTestData(
+        ZydisMachineMode mode, const InstructionEntries& instrs, ProgressReportFn reporter)
+    {
+        std::unordered_map<std::string, std::vector<std::uint32_t>> groups;
+        for (const auto off : instrs.entryOffsets)
+        {
+            const auto length = instrs.instrData[off];
+            const auto* data = instrs.instrData.data() + off + 1;
+            ZydisDisassembledInstruction d{};
+            std::string key;
+            if (ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, data, length, &d)))
+                key = behaviorKey(d);
+            else
+                key = "?" + std::to_string(off);
+            groups[std::move(key)].push_back(off);
+        }
+
+        std::vector<std::vector<std::uint32_t>> groupList;
+        groupList.reserve(groups.size());
+        for (auto& [k, v] : groups)
+            groupList.push_back(std::move(v));
+
+        std::vector<InstrTestGroup> result;
+        std::mutex mtx;
+        std::atomic<std::size_t> progress{ 0 };
+
+        parallelForEach(groupList.begin(), groupList.end(), [&](const std::vector<std::uint32_t>& grp) {
+            const auto repOff = grp[0];
+            const std::span<const std::uint8_t> repSpan{ instrs.instrData.data() + repOff + 1, instrs.instrData[repOff] };
+            InstrTestGroup rep = generateInstructionTestData(mode, repSpan);
+
+            std::vector<InstrTestGroup> local;
+            local.push_back(rep);
+            if (!rep.illegalInstruction && !rep.entries.empty())
+            {
+                for (std::size_t i = 1; i < grp.size(); ++i)
+                {
+                    const auto vOff = grp[i];
+                    const std::span<const std::uint8_t> vSpan{ instrs.instrData.data() + vOff + 1,
+                                                               instrs.instrData[vOff] };
+                    local.push_back(relabelGroup(mode, rep, repSpan, vSpan));
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                for (auto& g : local)
+                    result.push_back(std::move(g));
+            }
+
+            if (reporter)
+                reporter(progress.fetch_add(1) + 1, groupList.size());
+        });
+
+        return result;
     }
 
 } // namespace x86Tester::Generator

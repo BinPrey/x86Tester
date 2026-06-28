@@ -91,4 +91,7 @@ namespace x86Tester::Generator
 
     InstrTestGroup generateInstructionTestData(ZydisMachineMode mode, std::span<const std::uint8_t> instrData);
 
+    std::vector<InstrTestGroup> generateGroupedTestData(
+        ZydisMachineMode mode, const InstructionEntries& instrs, ProgressReportFn reporter);
+
 } // namespace x86Tester::Generator

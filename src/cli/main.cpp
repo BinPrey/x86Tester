@@ -233,22 +233,20 @@ static std::optional<std::size_t> generateInstrTests(
     Logging::startProgress("  Generating tests");
 
     std::vector<InstrTestGroup> testGroups;
-    std::mutex mtx;
-    std::atomic<size_t> curInstr = 0;
-    std::atomic<size_t> totalIterations = 0;
+    std::size_t totalIterations = 0;
 
-    instrs.forEachParallel([&](auto&& instrData) {
-        //
-        InstrTestGroup testCase = generateInstructionTestData(mode, instrData);
+    auto allGroups = Generator::generateGroupedTestData(
+        mode, instrs, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
+
+    for (auto& testCase : allGroups)
+    {
         if (!testCase.entries.empty() && !testCase.illegalInstruction)
         {
             Logging::addTitleCases(testCase.entries.size());
-            std::lock_guard lock(mtx);
             totalIterations += testCase.totalAttempts;
             testGroups.push_back(std::move(testCase));
         }
-        Logging::updateProgress(++curInstr, numInstrs);
-    });
+    }
 
     Logging::endProgress();
 
@@ -289,7 +287,7 @@ static std::optional<std::size_t> generateInstrTests(
             totalTestEntries += testGroup.entries.size();
         }
     }
-    Logging::println("  Total test cases: {}, total iterations {}", totalTestEntries, totalIterations.load());
+    Logging::println("  Total test cases: {}, total iterations {}", totalTestEntries, totalIterations);
 
     // Save to file.
     for (const auto& [groupMnemonic, testGroups] : testGroupsMap)

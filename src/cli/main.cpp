@@ -215,7 +215,7 @@ static std::optional<std::size_t> generateInstrTests(
 
     const auto filter = Generator::Filter{}.addMnemonics(mnemonic);
 
-    Logging::startProgress("Building \"{}\" instruction combinations", mnemonicStr);
+    Logging::startProgress("  Building \"{}\" instruction combinations", mnemonicStr);
 
     const auto instrs = Generator::buildInstructions(
         mode, filter, true, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
@@ -225,16 +225,17 @@ static std::optional<std::size_t> generateInstrTests(
     const auto numInstrs = instrs.entryOffsets.size();
     if (numInstrs == 0)
     {
-        Logging::println("No instructions generated, unsupported by host or memory access.");
+        Logging::println(" No instructions generated, unsupported by host or memory access.");
         return std::nullopt;
     }
 
-    Logging::println("Total instructions: {}", numInstrs);
-    Logging::startProgress("Generating tests");
+    Logging::println("  Total instructions: {}", numInstrs);
+    Logging::startProgress("  Generating tests");
 
     std::vector<InstrTestGroup> testGroups;
     std::mutex mtx;
     std::atomic<size_t> curInstr = 0;
+    std::atomic<size_t> totalIterations = 0;
 
     instrs.forEachParallel([&](auto&& instrData) {
         //
@@ -243,6 +244,7 @@ static std::optional<std::size_t> generateInstrTests(
         {
             Logging::addTitleCases(testCase.entries.size());
             std::lock_guard lock(mtx);
+            totalIterations += testCase.totalAttempts;
             testGroups.push_back(std::move(testCase));
         }
         Logging::updateProgress(++curInstr, numInstrs);
@@ -287,7 +289,7 @@ static std::optional<std::size_t> generateInstrTests(
             totalTestEntries += testGroup.entries.size();
         }
     }
-    Logging::println("Total test cases: {}", totalTestEntries);
+    Logging::println("  Total test cases: {}, total iterations {}", totalTestEntries, totalIterations.load());
 
     // Save to file.
     for (const auto& [groupMnemonic, testGroups] : testGroupsMap)

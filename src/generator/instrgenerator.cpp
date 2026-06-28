@@ -1409,6 +1409,8 @@ namespace x86Tester::Generator
             advanceInputs(ctx, prng, inputGenerators, instr, input, iteration);
             iteration++;
 
+            testCase.totalAttempts++;
+
             TestCaseEntry outA{};
             TestCaseEntry outB{};
 

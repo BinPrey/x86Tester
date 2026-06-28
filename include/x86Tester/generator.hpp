@@ -86,6 +86,7 @@ namespace x86Tester::Generator
         std::span<const uint8_t> instrData;
         std::vector<TestCaseEntry> entries;
         bool illegalInstruction{};
+        size_t totalAttempts{};
     };
 
     InstrTestGroup generateInstructionTestData(ZydisMachineMode mode, std::span<const std::uint8_t> instrData);

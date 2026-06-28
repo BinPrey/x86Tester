@@ -24,6 +24,7 @@
 #include <x86Tester/cpuid.hpp>
 #include <x86Tester/generator.hpp>
 #include <x86Tester/logging.hpp>
+#include <x86Tester/parallel.hpp>
 
 using namespace x86Tester;
 using namespace x86Tester::Generator;
@@ -351,6 +352,7 @@ static void printUsage()
                "\n"
                "Options:\n"
                "  --out <dir>           Output directory (default: testdata)\n"
+               "  --threads <n>         Max worker threads (0 = use all cores, default)\n"
                "  --force               Regenerate even if the output file already exists\n"
                "  --list                List the selected mnemonics and exit\n"
                "  --stop-on-impossible  Stop cleanly at the first impossible target (for fixing)\n"
@@ -367,6 +369,7 @@ int main(int argc, char** argv)
     bool force = false;
     bool list = false;
     bool stopOnImpossible = false;
+    unsigned maxThreads = 0;
 
     const auto nextArg = [&](int& i) -> std::string {
         if (i + 1 >= argc)
@@ -387,6 +390,22 @@ int main(int argc, char** argv)
         }
         else if (arg == "--out" || arg == "-o")
             outputPath = nextArg(i);
+        else if (arg == "--threads" || arg == "-j")
+        {
+            const std::string val = nextArg(i);
+            try
+            {
+                const long n = std::stol(val);
+                if (n < 0)
+                    throw std::out_of_range("negative");
+                maxThreads = static_cast<unsigned>(n);
+            }
+            catch (...)
+            {
+                fmt::print("Invalid thread count: {}\n", val);
+                return EXIT_FAILURE;
+            }
+        }
         else if (arg == "--isa")
             isaNames.push_back(nextArg(i));
         else if (arg == "--category" || arg == "--cat")
@@ -408,6 +427,8 @@ int main(int argc, char** argv)
         else
             mnemonicNames.push_back(arg);
     }
+
+    setMaxThreads(maxThreads);
 
     const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
 

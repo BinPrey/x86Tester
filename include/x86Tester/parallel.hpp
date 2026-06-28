@@ -8,6 +8,13 @@
 
 namespace x86Tester
 {
+    inline std::atomic<unsigned> g_maxThreads{ 0 };
+
+    inline void setMaxThreads(unsigned n)
+    {
+        g_maxThreads.store(n, std::memory_order_relaxed);
+    }
+
     template<typename Iterator, typename Func> void parallelForEach(Iterator first, Iterator last, Func fn)
     {
         const auto total = static_cast<std::size_t>(std::distance(first, last));
@@ -17,6 +24,10 @@ namespace x86Tester
         unsigned hw = std::thread::hardware_concurrency();
         if (hw == 0)
             hw = 1;
+
+        const unsigned maxT = g_maxThreads.load(std::memory_order_relaxed);
+        if (maxT != 0 && maxT < hw)
+            hw = maxT;
 
         std::size_t workers = static_cast<std::size_t>(hw);
         if (workers > total)

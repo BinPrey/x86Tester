@@ -141,9 +141,10 @@ namespace x86Tester::Cpuid
         }
     }
 
+    static const CpuInfo info = buildCpuInfo();
+
     const CpuInfo& getCpuInfo()
     {
-        static const CpuInfo info = buildCpuInfo();
         return info;
     }
 

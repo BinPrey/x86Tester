@@ -21,6 +21,7 @@ extern "C" {
 #include <mutex>
 #include <random>
 #include <sfl/small_flat_set.hpp>
+#include <sfl/static_flat_set.hpp>
 #include <sfl/static_vector.hpp>
 #include <span>
 #include <unordered_map>
@@ -678,7 +679,6 @@ namespace x86Tester::Generator
         }
     };
 
-
     static bool isSupportedInstruction(const ZydisDisassembledInstruction& instr)
     {
         if ((instr.info.attributes & ZYDIS_ATTRIB_IS_PRIVILEGED) != 0)
@@ -829,8 +829,7 @@ namespace x86Tester::Generator
                 bool isValid = encodeRes.status == ZYAN_STATUS_SUCCESS;
 
                 ZydisDisassembledInstruction dis;
-                if (isValid
-                    && ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, encodeRes.buf, encodeRes.size, &dis))
+                if (isValid && ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, encodeRes.buf, encodeRes.size, &dis))
                     && isSupportedInstruction(dis))
                 {
                     CondLockGuard<TBuildInParallel> lock(mtx);
@@ -1052,36 +1051,65 @@ namespace x86Tester::Generator
         }
     }
 
+    static ZydisStackWidth getStackWidth(ZydisMachineMode mode)
+    {
+        switch (mode)
+        {
+            case ZYDIS_MACHINE_MODE_LONG_64:
+                return ZYDIS_STACK_WIDTH_64;
+            case ZYDIS_MACHINE_MODE_LEGACY_32:
+                return ZYDIS_STACK_WIDTH_32;
+            case ZYDIS_MACHINE_MODE_LEGACY_16:
+                return ZYDIS_STACK_WIDTH_16;
+            default:
+                break;
+        }
+        return ZYDIS_STACK_WIDTH_64;
+    }
+
     std::vector<MnemonicInfo> buildMnemonicIndex(ZydisMachineMode mode)
     {
+        Logging::startProgress("Building instruction combination index...");
+
         std::vector<MnemonicInfo> res(ZYDIS_MNEMONIC_MAX_VALUE + 1);
 
+        ZydisDecoder decoder{};
+        ZydisDecoderInit(&decoder, mode, getStackWidth(mode));
+
         auto generators = createGenerators(Filter{});
-        for (auto& instr : generators)
-        {
+
+        std::atomic<size_t> i = 0;
+        size_t totalGenerators = generators.size();
+
+        parallelForEach(generators.begin(), generators.end(), [&](auto& instr) {
+            Logging::updateProgress(i.fetch_add(1) + 1, totalGenerators);
+
             const auto mnemonic = instr.mnemonic();
             if (res[mnemonic].encodable)
-                continue;
+                return;
 
-            for (int attempt = 0; attempt < 65536; ++attempt)
+            for (;;)
             {
                 const auto encodeRes = checkEncode(instr.current(), mode);
                 if (encodeRes.status == ZYAN_STATUS_SUCCESS)
                 {
                     ZydisDisassembledInstruction dis{};
-                    if (ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, encodeRes.buf, encodeRes.size, &dis)))
+                    if (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, encodeRes.buf, encodeRes.size, &dis.info, dis.operands))
+                        && isSupportedInstruction(dis))
                     {
                         res[mnemonic].encodable = true;
                         res[mnemonic].category = dis.info.meta.category;
                         res[mnemonic].isaExt = dis.info.meta.isa_ext;
+                        return;
                     }
-                    break;
                 }
 
                 if (!instr.advance())
-                    break;
+                    return;
             }
-        }
+        });
+
+        Logging::endProgress();
 
         return res;
     }
@@ -1440,7 +1468,7 @@ namespace x86Tester::Generator
         const auto seed = static_cast<std::size_t>(instr.info.mnemonic);
         std::mt19937_64 prng(seed);
 
-        sfl::small_flat_set<ZydisRegister, 5> readRoots;
+        sfl::static_flat_set<ZydisRegister, 10> readRoots;
         for (const auto reg : getRegsRead(instr))
             readRoots.insert(getRootReg(instr.info.machine_mode, reg));
 
@@ -1723,8 +1751,7 @@ namespace x86Tester::Generator
         sfl::small_flat_map<ZydisRegister, ZydisRegister, 4> rootMap;
         for (std::size_t i = 0; i < dr.info.operand_count && i < dv.info.operand_count; ++i)
         {
-            if (dr.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER
-                && dv.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER)
+            if (dr.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER && dv.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER)
                 rootMap[getRootReg(mode, dr.operands[i].reg.value)] = getRootReg(mode, dv.operands[i].reg.value);
         }
 
@@ -1784,8 +1811,7 @@ namespace x86Tester::Generator
                 for (std::size_t i = 1; i < grp.size(); ++i)
                 {
                     const auto vOff = grp[i];
-                    const std::span<const std::uint8_t> vSpan{ instrs.instrData.data() + vOff + 1,
-                                                               instrs.instrData[vOff] };
+                    const std::span<const std::uint8_t> vSpan{ instrs.instrData.data() + vOff + 1, instrs.instrData[vOff] };
                     local.push_back(relabelGroup(mode, rep, repSpan, vSpan));
                 }
             }

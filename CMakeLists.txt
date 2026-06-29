@@ -243,6 +243,14 @@ target_link_libraries(x86Tester-cli PRIVATE
 	x86Tester::execution
 )
 
+if(MSVC) # msvc
+	target_link_options(x86Tester-cli PRIVATE
+		"/DEBUG"
+		"/OPT:REF"
+		"/OPT:ICF"
+	)
+endif()
+
 set_target_properties(x86Tester-cli PROPERTIES
 	PROJECT_LABEL
 		cli

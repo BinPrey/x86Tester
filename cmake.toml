@@ -68,6 +68,7 @@ sources = ["src/cli/main.cpp"]
 headers = ["src/cli/utils.hpp"]
 compile-features = ["cxx_std_20"]
 private-link-libraries = ["x86Tester::core", "x86Tester::generator", "x86Tester::execution"]
+msvc.link-options = ["/DEBUG", "/OPT:REF", "/OPT:ICF"]
 
 [target.x86Tester-cli.properties]
 PROJECT_LABEL = "cli"

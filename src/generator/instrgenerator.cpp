@@ -183,6 +183,14 @@ namespace x86Tester::Generator
                 };
             };
 
+            struct MaskRegs
+            {
+                static constexpr ZydisRegister kTable[] = {
+                    ZYDIS_REGISTER_K0, ZYDIS_REGISTER_K1, ZYDIS_REGISTER_K2, ZYDIS_REGISTER_K3,
+                    ZYDIS_REGISTER_K4, ZYDIS_REGISTER_K5, ZYDIS_REGISTER_K6, ZYDIS_REGISTER_K7,
+                };
+            };
+
         } // namespace Detail
 
         class OperandBase
@@ -222,6 +230,7 @@ namespace x86Tester::Generator
         using Ymm = RegT<Detail::YmmRegs>;
         using Zmm = RegT<Detail::ZmmRegs>;
         using Tmm = RegT<Detail::TmmRegs>;
+        using Mask = RegT<Detail::MaskRegs>;
 
         struct RegImplicit : public OperandBase
         {
@@ -506,6 +515,9 @@ namespace x86Tester::Generator
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_YMM:
                 gens.add<Generators::Ymm>();
+                break;
+            case ZYDIS_SEMANTIC_OPTYPE_MASK:
+                gens.add<Generators::Mask>();
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_ZMM:
                 gens.add<Generators::Zmm>();
@@ -891,6 +903,8 @@ namespace x86Tester::Generator
                 key += std::to_string(static_cast<int>(getRegOffset(op.reg.value)));
                 key += '.';
                 key += std::to_string(slot);
+                if (op.reg.value == ZYDIS_REGISTER_K0)
+                    key += 'z';
             }
             else if (op.type == ZYDIS_OPERAND_TYPE_IMMEDIATE)
             {

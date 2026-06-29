@@ -461,6 +461,25 @@ namespace x86Tester::Generator
         return 0;
     }
 
+    static unsigned getmantExpLane(ZydisMnemonic mnemonic, bool& scalar)
+    {
+        scalar = false;
+        switch (mnemonic)
+        {
+            case ZYDIS_MNEMONIC_VGETMANTSS:
+                scalar = true;
+                return 32;
+            case ZYDIS_MNEMONIC_VGETMANTSD:
+                scalar = true;
+                return 64;
+            case ZYDIS_MNEMONIC_VGETMANTPS:
+                return 32;
+            case ZYDIS_MNEMONIC_VGETMANTPD:
+                return 64;
+        }
+        return 0;
+    }
+
     // For a left-shift of a lane by its own value (the self-shift case), the only reachable lane
     // values are c<<c for c in [0, laneWidth). Returns the OR of those, i.e. the bits that can be 1.
     static std::uint64_t selfShlReachableMask(unsigned laneWidth)
@@ -483,7 +502,33 @@ namespace x86Tester::Generator
         std::vector<TestBitInfo> matrix;
 
         bool regDestAndSrcSame = false;
-        const auto& ops = instr.operands;
+        ZydisDecodedOperand maskFilteredOps[ZYDIS_MAX_OPERAND_COUNT];
+        const ZydisDecodedOperand* ops = instr.operands;
+        bool mergeMasked = false;
+        {
+            bool hasK0 = false;
+            for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+                if (ops[i].type == ZYDIS_OPERAND_TYPE_REGISTER
+                    && ZydisRegisterGetClass(ops[i].reg.value) == ZYDIS_REGCLASS_MASK)
+                {
+                    if (ops[i].reg.value == ZYDIS_REGISTER_K0)
+                        hasK0 = true;
+                    else
+                        mergeMasked = true;
+                }
+            if (hasK0 && !mergeMasked)
+            {
+                std::size_t n = 0;
+                for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+                {
+                    if (ops[i].type == ZYDIS_OPERAND_TYPE_REGISTER
+                        && ZydisRegisterGetClass(ops[i].reg.value) == ZYDIS_REGCLASS_MASK)
+                        continue;
+                    maskFilteredOps[n++] = ops[i];
+                }
+                ops = maskFilteredOps;
+            }
+        }
         if (ops[0].type == ZYDIS_OPERAND_TYPE_REGISTER && ops[1].type == ZYDIS_OPERAND_TYPE_REGISTER)
         {
             if (ops[0].reg.value == ops[1].reg.value)
@@ -1174,9 +1219,11 @@ namespace x86Tester::Generator
         }
 
         bool fpConvPacked = true;
-        const unsigned fpConvZeroLow = fpConvZeroLowPerLane(instr, fpConvPacked);
+        const unsigned fpConvZeroLow = mergeMasked ? 0u : fpConvZeroLowPerLane(instr, fpConvPacked);
         bool convSignScalar = false;
-        const unsigned convSignLaneWidth = unsignedConvSignLane(instr.info.mnemonic, convSignScalar);
+        const unsigned convSignLaneWidth = mergeMasked ? 0u : unsignedConvSignLane(instr.info.mnemonic, convSignScalar);
+        bool getmantScalar = false;
+        const unsigned getmantLane = mergeMasked ? 0u : getmantExpLane(instr.info.mnemonic, getmantScalar);
 
         bool alwaysFaults = false;
         if (instr.info.mnemonic == ZYDIS_MNEMONIC_DIV || instr.info.mnemonic == ZYDIS_MNEMONIC_IDIV)
@@ -1415,6 +1462,14 @@ namespace x86Tester::Generator
                 if (convSignLaneWidth != 0 && (bitPos % convSignLaneWidth) == convSignLaneWidth - 1
                     && (!convSignScalar || bitPos < convSignLaneWidth))
                     testOne = false;
+
+                if (getmantLane != 0 && (!getmantScalar || bitPos < getmantLane))
+                {
+                    const auto posInLane = bitPos % getmantLane;
+                    if ((getmantLane == 32 && posInLane >= 24 && posInLane <= 29)
+                        || (getmantLane == 64 && posInLane >= 53 && posInLane <= 61))
+                        testZero = false;
+                }
 
                 if (regModified == ZYDIS_REGISTER_X87STATUS)
                 {

@@ -1142,9 +1142,9 @@ namespace x86Tester::Generator
     static constexpr auto kAbortTestCaseThreshold = 100'000;
     static constexpr auto kReportInputsThreshold = kAbortTestCaseThreshold * 80 / 100;
 
-    static sfl::static_vector<ZydisRegister, 5> getRegsUsed(const ZydisDisassembledInstruction& instr)
+    static sfl::static_vector<ZydisRegister, 7> getRegsUsed(const ZydisDisassembledInstruction& instr)
     {
-        sfl::small_flat_set<ZydisRegister, 5> regs;
+        sfl::small_flat_set<ZydisRegister, 7> regs;
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];

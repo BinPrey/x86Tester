@@ -36,18 +36,18 @@ namespace x86Tester::Generator
         return false;
     }
 
-    inline sfl::static_vector<ZydisRegister, 5> sortRegs(const sfl::small_flat_set<ZydisRegister, 5>& regs)
+    inline sfl::static_vector<ZydisRegister, 7> sortRegs(const sfl::small_flat_set<ZydisRegister, 7>& regs)
     {
-        sfl::static_vector<ZydisRegister, 5> res(regs.begin(), regs.end());
+        sfl::static_vector<ZydisRegister, 7> res(regs.begin(), regs.end());
         std::sort(res.begin(), res.end(), [](auto a, auto b) {
             return ZydisRegisterGetWidth(ZYDIS_MACHINE_MODE_LONG_64, a) > ZydisRegisterGetWidth(ZYDIS_MACHINE_MODE_LONG_64, b);
         });
         return res;
     }
 
-    inline sfl::static_vector<ZydisRegister, 5> getRegsModified(const ZydisDisassembledInstruction& instr)
+    inline sfl::static_vector<ZydisRegister, 7> getRegsModified(const ZydisDisassembledInstruction& instr)
     {
-        sfl::small_flat_set<ZydisRegister, 5> regs;
+        sfl::small_flat_set<ZydisRegister, 7> regs;
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];
@@ -76,9 +76,9 @@ namespace x86Tester::Generator
         return reg;
     }
 
-    inline sfl::static_vector<ZydisRegister, 5> getRegsRead(const ZydisDisassembledInstruction& instr)
+    inline sfl::static_vector<ZydisRegister, 7> getRegsRead(const ZydisDisassembledInstruction& instr)
     {
-        sfl::small_flat_set<ZydisRegister, 5> regs;
+        sfl::small_flat_set<ZydisRegister, 7> regs;
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];

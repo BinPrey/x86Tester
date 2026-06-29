@@ -21,6 +21,7 @@ extern "C" {
 #include <mutex>
 #include <random>
 #include <sfl/small_flat_set.hpp>
+#include <sfl/static_flat_map.hpp>
 #include <sfl/static_flat_set.hpp>
 #include <sfl/static_vector.hpp>
 #include <span>
@@ -640,7 +641,7 @@ namespace x86Tester::Generator
         uint8_t size{};
     };
 
-    EncodeResult checkEncode(ZydisEncoderRequest req, ZydisMachineMode mode)
+    static EncodeResult checkEncode(ZydisEncoderRequest req, ZydisMachineMode mode)
     {
         req.machine_mode = mode;
 
@@ -689,6 +690,9 @@ namespace x86Tester::Generator
 
         // APX uses the extended GPRs R16-R31, which the harness CONTEXT has no storage for.
         if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
+            return false;
+
+        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_UINTR)
             return false;
 
         if (!isSupportedIsaExt(instr.info.meta.isa_ext))
@@ -1748,7 +1752,7 @@ namespace x86Tester::Generator
         ZydisDisassembleIntel(mode, 0, repBytes.data(), repBytes.size(), &dr);
         ZydisDisassembleIntel(mode, 0, varBytes.data(), varBytes.size(), &dv);
 
-        sfl::small_flat_map<ZydisRegister, ZydisRegister, 4> rootMap;
+        sfl::static_flat_map<ZydisRegister, ZydisRegister, 10> rootMap;
         for (std::size_t i = 0; i < dr.info.operand_count && i < dv.info.operand_count; ++i)
         {
             if (dr.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER && dv.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER)

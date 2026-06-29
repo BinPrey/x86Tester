@@ -543,6 +543,7 @@ namespace x86Tester::Generator
         bool compareAlwaysZero = false;
         bool zfAlwaysOne = false;
         bool cfAlwaysOne = false;
+        bool ofAlwaysOne = false;
         bool pfAlwaysOne = false;
         bool flagsNotUpdated = false;
         bool firstBitAlwaysZero = false;
@@ -866,8 +867,9 @@ namespace x86Tester::Generator
                     const auto imm = ops[3].imm.value.u;
                     const bool noProducts = (imm & 0xF0) == 0;
                     laneZeroWidth = 32;
-                    for (unsigned l = 0; l < 4; ++l)
-                        if (noProducts || (imm & (1u << l)) == 0)
+                    const unsigned lanes = ZydisRegisterGetClass(ops[0].reg.value) == ZYDIS_REGCLASS_YMM ? 8 : 4;
+                    for (unsigned l = 0; l < lanes; ++l)
+                        if (noProducts || (imm & (1u << (l & 3))) == 0)
                             laneZeroMask |= (1u << l);
                 }
                 break;
@@ -1212,7 +1214,40 @@ namespace x86Tester::Generator
                     if (zeroWord >= 0 && zeroWord <= 7)
                     {
                         laneZeroWidth = 16;
-                        laneZeroMask = 1u << zeroWord;
+                        laneZeroMask |= 1u << zeroWord;
+                    }
+                    if (ZydisRegisterGetClass(ops[0].reg.value) == ZYDIS_REGCLASS_YMM)
+                    {
+                        const int zeroWordHi
+                            = 4 * (static_cast<int>((imm >> 3) & 3) - static_cast<int>((imm >> 5) & 1));
+                        if (zeroWordHi >= 0 && zeroWordHi <= 7)
+                        {
+                            laneZeroWidth = 16;
+                            laneZeroMask |= 1u << (8 + zeroWordHi);
+                        }
+                    }
+                }
+                break;
+            case ZYDIS_MNEMONIC_PCMPISTRM:
+            case ZYDIS_MNEMONIC_VPCMPISTRM:
+                if (regDestAndSrcSame && ops[2].type == ZYDIS_OPERAND_TYPE_IMMEDIATE
+                    && ((ops[2].imm.value.u >> 2) & 3) == 2)
+                {
+                    const auto imm = ops[2].imm.value.u;
+                    cfAlwaysOne = true;
+                    ofAlwaysOne = true;
+                    if (((imm >> 6) & 1) != 0)
+                    {
+                        laneOneWidth = 64;
+                        laneOneMask = ~0ull;
+                        laneOnePacked = true;
+                    }
+                    else
+                    {
+                        const unsigned elems = (imm & 1) ? 8 : 16;
+                        laneOneWidth = elems;
+                        laneOneMask = (1ull << elems) - 1;
+                        laneOnePacked = false;
                     }
                 }
                 break;
@@ -1426,7 +1461,7 @@ namespace x86Tester::Generator
                 {
                     const unsigned lane = bitPos / shiftSelfLaneWidth;
                     const unsigned posInLane = bitPos % shiftSelfLaneWidth;
-                    const unsigned numCountLanes = shiftSelfAllLanes ? (128 / shiftSelfLaneWidth) : (64 / shiftSelfLaneWidth);
+                    const unsigned numCountLanes = shiftSelfAllLanes ? (512 / shiftSelfLaneWidth) : (64 / shiftSelfLaneWidth);
                     if (lane < numCountLanes)
                     {
                         if (!shiftSelfShl)
@@ -1647,6 +1682,11 @@ namespace x86Tester::Generator
                     if (flag == ZYDIS_CPUFLAG_OF)
                     {
                         testFlagOne = !regDestAndSrcSame && !rightInputZero && !zeroResult && !mulCannotOverflow;
+                        if (ofAlwaysOne)
+                        {
+                            testFlagOne = true;
+                            testFlagZero = false;
+                        }
                     }
                     if (flag == ZYDIS_CPUFLAG_PF)
                     {

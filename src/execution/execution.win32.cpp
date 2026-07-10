@@ -549,6 +549,39 @@ namespace x86Tester::Execution
         return ctx;
     }
 
+    bool reset(Context* ctx, ZydisMachineMode mode, std::span<const std::uint8_t> code)
+    {
+        if (!setupCode(ctx, code))
+            return false;
+
+        ctx->threadContext->Rax = 0;
+        ctx->threadContext->Rcx = 0;
+        ctx->threadContext->Rdx = 0;
+        ctx->threadContext->Rbx = 0;
+        ctx->threadContext->Rsp = 0;
+        ctx->threadContext->Rbp = 0;
+        ctx->threadContext->Rsi = 0;
+        ctx->threadContext->Rdi = 0;
+        ctx->threadContext->R8 = 0;
+        ctx->threadContext->R9 = 0;
+        ctx->threadContext->R10 = 0;
+        ctx->threadContext->R11 = 0;
+        ctx->threadContext->R12 = 0;
+        ctx->threadContext->R13 = 0;
+        ctx->threadContext->R14 = 0;
+        ctx->threadContext->R15 = 0;
+
+        ctx->contextFlags = computeContextFlags(mode, code);
+
+        if ((ctx->contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+        {
+            ctx->threadContext->ContextFlags = ctx->contextFlags;
+            SetXStateFeaturesMask(ctx->threadContext, ctx->xstateMask & ~static_cast<DWORD64>(3));
+        }
+
+        return true;
+    }
+
     std::span<std::uint8_t> getContextReg(Context* ctx, ZydisRegister reg)
     {
         auto getRegData = [&](auto& dst) {

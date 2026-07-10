@@ -37,21 +37,28 @@ namespace x86Tester::Execution
 
     void cleanup(Context* ctx);
 
+    bool reset(Context* ctx, ZydisMachineMode mode, std::span<const std::uint8_t> code);
+
+    Context* acquireContext(ZydisMachineMode mode, std::span<const std::uint8_t> code);
+
+    void releaseContext(Context* ctx, bool healthy);
+
     ExecutionStatus getExecutionStatus(Context* ctx);
 
     class ScopedContext
     {
         Context* ctx;
+        bool healthy = true;
 
     public:
         ScopedContext(ZydisMachineMode mode, std::span<const std::uint8_t> code)
-            : ctx(prepare(mode, code))
+            : ctx(acquireContext(mode, code))
         {
         }
 
         ~ScopedContext()
         {
-            cleanup(ctx);
+            releaseContext(ctx, healthy);
         }
 
         Context* get() const
@@ -66,7 +73,10 @@ namespace x86Tester::Execution
 
         bool execute()
         {
-            return x86Tester::Execution::execute(ctx);
+            const bool ok = x86Tester::Execution::execute(ctx);
+            if (!ok)
+                healthy = false;
+            return ok;
         }
 
         void pinThread(unsigned core)

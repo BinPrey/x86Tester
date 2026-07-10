@@ -222,6 +222,33 @@ namespace x86Tester::Execution
         return ctx;
     }
 
+    bool reset(Context* ctx, ZydisMachineMode mode, std::span<const std::uint8_t> code)
+    {
+        if (!setupCode(ctx, code))
+            return false;
+
+        ctx->regs.rax = 0;
+        ctx->regs.rcx = 0;
+        ctx->regs.rdx = 0;
+        ctx->regs.rbx = 0;
+        ctx->regs.rsp = 0;
+        ctx->regs.rbp = 0;
+        ctx->regs.rsi = 0;
+        ctx->regs.rdi = 0;
+        ctx->regs.r8 = 0;
+        ctx->regs.r9 = 0;
+        ctx->regs.r10 = 0;
+        ctx->regs.r11 = 0;
+        ctx->regs.r12 = 0;
+        ctx->regs.r13 = 0;
+        ctx->regs.r14 = 0;
+        ctx->regs.r15 = 0;
+
+        ctx->useFpRegs = computeUseFpRegs(mode, code);
+
+        return true;
+    }
+
     std::span<std::uint8_t> getContextReg(Context* ctx, ZydisRegister reg)
     {
         auto bytes = [](auto& dst, std::size_t n) {

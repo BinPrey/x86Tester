@@ -4,13 +4,13 @@
 #include <Zydis/Encoder.h>
 #include <array>
 #include <cstring>
-#include <filesystem>
 #include <fmt/format.h>
-#include <x86Tester/logging.hpp>
 #include <intrin.h>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
+#include <x86Tester/logging.hpp>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -38,21 +38,6 @@ namespace x86Tester::Execution
         ExecutionStatus status{};
         DWORD contextFlags{ CONTEXT_ALL };
     };
-
-    static std::filesystem::path getExecutingPath()
-    {
-        wchar_t path[2048]{};
-        GetModuleFileNameW(nullptr, path, std::size(path));
-
-        auto* lastSlash = std::wcsrchr(path, L'\\');
-        if (!lastSlash)
-        {
-            return path;
-        }
-
-        *lastSlash = L'\0';
-        return path;
-    }
 
     enum class DebugStatus
     {
@@ -184,7 +169,7 @@ namespace x86Tester::Execution
                 // Entry breakpoint.
                 return DebugStatus::Exit;
             }
-            if (ctx->breakAddr == 0)
+            else if (ctx->breakAddr == 0)
             {
                 // fmt::print("System breakpoint\n");
                 return DebugStatus::SystemBreak;
@@ -206,14 +191,14 @@ namespace x86Tester::Execution
             return DebugStatus::Faulted;
         }
 
-        // fmt::print("Exception code: {:X}\n", record.ExceptionCode);
-        // fmt::print("Exception flags: {:X}\n", record.ExceptionFlags);
-        // fmt::print("Exception address: {:X}\n", exceptionAddress);
-        // fmt::print("Number of parameters: {}\n", record.NumberParameters);
-        // for (DWORD i = 0; i < record.NumberParameters; ++i)
-        //{
-        //     fmt::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
-        // }
+        fmt::print("Exception code: {:X}\n", record.ExceptionCode);
+        fmt::print("Exception flags: {:X}\n", record.ExceptionFlags);
+        fmt::print("Exception address: {:X}\n", exceptionAddress);
+        fmt::print("Number of parameters: {}\n", record.NumberParameters);
+        for (DWORD i = 0; i < record.NumberParameters; ++i)
+        {
+            fmt::print("Parameter {}: {}\n", i, record.ExceptionInformation[i]);
+        }
 
         if (ctx->codeBase >= exceptionAddress && exceptionAddress < ctx->codeBase + ctx->codeSize)
         {
@@ -263,12 +248,15 @@ namespace x86Tester::Execution
         ctx->startupInfo.dwFlags = STARTF_USESHOWWINDOW;
         ctx->startupInfo.wShowWindow = SW_HIDE;
 
-        const auto path = getExecutingPath();
-        const auto cmd = path / "x86Tester-sandbox.exe";
-        auto cmdWstr = cmd.wstring();
+        wchar_t exePath[2048]{};
+        GetModuleFileNameW(nullptr, exePath, 2048);
+
+        std::wstring cmdLine = L"\"";
+        cmdLine += exePath;
+        cmdLine += L"\" --sandbox";
 
         if (!CreateProcessW(
-                nullptr, cmdWstr.data(), nullptr, nullptr, FALSE, DEBUG_PROCESS, nullptr, nullptr, &ctx->startupInfo,
+                nullptr, cmdLine.data(), nullptr, nullptr, FALSE, DEBUG_PROCESS, nullptr, nullptr, &ctx->startupInfo,
                 &ctx->processInfo))
         {
             return false;
@@ -325,40 +313,28 @@ namespace x86Tester::Execution
         return regs;
     }
 
-    static std::byte* allocRemoteCode(Context* ctx, std::size_t size)
-    {
-        // Try to allocate at a predictable address, the child process has base of 0x70000000.
-
-        auto* remoteCodeAddr = static_cast<std::byte*>(VirtualAllocEx(
-            ctx->processInfo.hProcess, reinterpret_cast<void*>(0x04000000), size, MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE));
-        if (remoteCodeAddr != nullptr)
-        {
-            return remoteCodeAddr;
-        }
-
-        remoteCodeAddr = static_cast<std::byte*>(VirtualAllocEx(
-            ctx->processInfo.hProcess, reinterpret_cast<void*>(0x05000000), size, MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE));
-        if (remoteCodeAddr != nullptr)
-        {
-            return remoteCodeAddr;
-        }
-
-        return static_cast<std::byte*>(
-            VirtualAllocEx(ctx->processInfo.hProcess, nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-    }
+    static constexpr std::array<std::byte, 0x1000> kNulledPage{};
 
     static bool setupCode(Context* ctx, std::span<const std::uint8_t> code)
     {
-        auto* remoteCodeAddr = allocRemoteCode(ctx, code.size());
-        if (remoteCodeAddr == nullptr)
+        SIZE_T written{};
+
+        auto* imageBase = reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr));
+        auto* remoteCodeAddr = imageBase;
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtectEx(ctx->processInfo.hProcess, remoteCodeAddr, code.size() + 2, PAGE_EXECUTE_READWRITE, &oldProtect))
+        {
+            return false;
+        }
+
+        // Clear the page to avoid any accidental execution of existing code.
+        if (!WriteProcessMemory(ctx->processInfo.hProcess, remoteCodeAddr, kNulledPage.data(), sizeof(kNulledPage), &written))
         {
             return false;
         }
 
         const uint8_t breakpoint[] = { 0xCC };
-        SIZE_T written;
 
         auto* cur = remoteCodeAddr;
 
@@ -395,17 +371,41 @@ namespace x86Tester::Execution
 
     static bool setupThread(Context* ctx)
     {
+        // Setup a little breakpoint stub.
+        auto* bpCave = VirtualAllocEx(
+            ctx->processInfo.hProcess, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+        if (bpCave == nullptr)
+        {
+            Logging::println("VirtualAllocEx failed: {:X}", GetLastError());
+            return false;
+        }
+
+        const std::uint8_t stubCode[] = {
+            0xCC,       // int3
+            0xEB, 0xFE, // jmp $+0
+        };
+
+        SIZE_T written{};
+        if (!WriteProcessMemory(ctx->processInfo.hProcess, bpCave, stubCode, sizeof(stubCode), &written))
+        {
+            Logging::println("WriteProcessMemory failed: {:X}", GetLastError());
+            return false;
+        }
+
         // Spawn thread.
         auto hThread = CreateRemoteThread(
-            ctx->processInfo.hProcess, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(ctx->codeBase), nullptr, 0,
-            nullptr);
+            ctx->processInfo.hProcess, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(bpCave), nullptr, 0, nullptr);
 
         if (hThread == nullptr)
         {
+            Logging::println("CreateRemoteThread failed: {:X}", GetLastError());
             return false;
         }
 
         ctx->hThread = hThread;
+        // Temporarily becomes our code base.
+        ctx->codeBase = reinterpret_cast<std::uintptr_t>(bpCave);
 
         // Wait for the entry breakpoint.
         auto& dbgEvent = ctx->dbgEvent;
@@ -414,7 +414,13 @@ namespace x86Tester::Execution
             auto status = handleDbgEvent(ctx, dbgEvent);
             if (status == DebugStatus::Exit)
             {
+                ctx->codeBase = 0;
                 break;
+            }
+            else if (status == DebugStatus::Faulted)
+            {
+                Logging::println("Thread faulted during setup");
+                return false;
             }
             ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_CONTINUE);
         }
@@ -514,13 +520,13 @@ namespace x86Tester::Execution
             return nullptr;
         }
 
-        if (!setupCode(ctx, code))
+        if (!setupThread(ctx))
         {
             delete ctx;
             return nullptr;
         }
 
-        if (!setupThread(ctx))
+        if (!setupCode(ctx, code))
         {
             delete ctx;
             return nullptr;

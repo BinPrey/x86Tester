@@ -40,49 +40,6 @@ endif()
 add_subdirectory(thirdparty)
 set(CMAKE_FOLDER ${CMKR_CMAKE_FOLDER})
 
-# Target: x86Tester-sandbox
-if(WIN32) # windows
-	set(x86Tester-sandbox_SOURCES
-		cmake.toml
-		"src/sandbox/main.cpp"
-	)
-
-	add_executable(x86Tester-sandbox)
-
-	target_sources(x86Tester-sandbox PRIVATE ${x86Tester-sandbox_SOURCES})
-	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${x86Tester-sandbox_SOURCES})
-
-	target_compile_features(x86Tester-sandbox PRIVATE
-		cxx_std_20
-	)
-
-	if(MSVC) # msvc
-		target_compile_options(x86Tester-sandbox PRIVATE
-			"/Ob2"
-			"/Oi"
-		)
-	endif()
-
-	if(MSVC) # msvc
-		target_link_options(x86Tester-sandbox PRIVATE
-			"/NODEFAULTLIB"
-			"/ENTRY:rawEntry"
-			"/DYNAMICBASE:NO"
-			"/BASE:0x70000000"
-		)
-	endif()
-
-	set_target_properties(x86Tester-sandbox PROPERTIES
-		PROJECT_LABEL
-			sandbox
-	)
-
-	get_directory_property(CMKR_VS_STARTUP_PROJECT DIRECTORY ${PROJECT_SOURCE_DIR} DEFINITION VS_STARTUP_PROJECT)
-	if(NOT CMKR_VS_STARTUP_PROJECT)
-		set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT x86Tester-sandbox)
-	endif()
-
-endif()
 # Target: x86Tester-core
 set(x86Tester-core_SOURCES
 	cmake.toml
@@ -224,7 +181,10 @@ set_target_properties(x86Tester-generator PROPERTIES
 # Target: x86Tester-cli
 set(x86Tester-cli_SOURCES
 	cmake.toml
+	"src/cli/cli.hpp"
+	"src/cli/generator.cpp"
 	"src/cli/main.cpp"
+	"src/cli/sandbox.cpp"
 	"src/cli/utils.hpp"
 )
 
@@ -248,6 +208,8 @@ if(MSVC) # msvc
 		"/DEBUG"
 		"/OPT:REF"
 		"/OPT:ICF"
+		"/BASE:0x4000000"
+		"/DYNAMICBASE:NO"
 	)
 endif()
 

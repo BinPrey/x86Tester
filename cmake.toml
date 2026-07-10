@@ -7,18 +7,6 @@ name = "x86Tester"
 
 [subdir.thirdparty]
 
-[target.x86Tester-sandbox]
-condition = "windows"
-type = "executable"
-sources = ["src/sandbox/main.cpp"]
-compile-features = ["cxx_std_20"]
-# Disable runtime checks
-msvc.compile-options = ["/Ob2", "/Oi"]
-msvc.link-options = ["/NODEFAULTLIB", "/ENTRY:rawEntry", "/DYNAMICBASE:NO", "/BASE:0x70000000"]
-
-[target.x86Tester-sandbox.properties]
-PROJECT_LABEL = "sandbox"
-
 [target.x86Tester-core]
 type = "static"
 alias = "x86Tester::core"
@@ -64,11 +52,11 @@ PROJECT_LABEL = "generator"
 
 [target.x86Tester-cli]
 type = "executable"
-sources = ["src/cli/main.cpp"]
-headers = ["src/cli/utils.hpp"]
+sources = ["src/cli/main.cpp", "src/cli/generator.cpp", "src/cli/sandbox.cpp"]
+headers = ["src/cli/utils.hpp", "src/cli/cli.hpp"]
 compile-features = ["cxx_std_20"]
 private-link-libraries = ["x86Tester::core", "x86Tester::generator", "x86Tester::execution"]
-msvc.link-options = ["/DEBUG", "/OPT:REF", "/OPT:ICF"]
+msvc.link-options = ["/DEBUG", "/OPT:REF", "/OPT:ICF", "/BASE:0x4000000", "/DYNAMICBASE:NO"]
 
 [target.x86Tester-cli.properties]
 PROJECT_LABEL = "cli"

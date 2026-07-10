@@ -9,6 +9,7 @@
 
 #include <cpuid.h>
 #include <elf.h>
+#include <sched.h>
 #include <signal.h>
 #include <sys/ptrace.h>
 #include <sys/syscall.h>
@@ -509,6 +510,16 @@ namespace x86Tester::Execution
         }
 
         return true;
+    }
+
+    void pinThread(Context* ctx, unsigned core)
+    {
+        if (ctx == nullptr || ctx->pid <= 0)
+            return;
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CPU_SET(core, &set);
+        sched_setaffinity(ctx->pid, sizeof(set), &set);
     }
 
     void cleanup(Context* ctx)

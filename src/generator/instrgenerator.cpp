@@ -17,9 +17,15 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <fmt/format.h>
+#ifdef _WIN32
+#    include <intrin.h>
+#else
+#    include <cpuid.h>
+#endif
 #include <memory>
 #include <mutex>
 #include <random>
+#include <set>
 #include <sfl/small_flat_set.hpp>
 #include <sfl/static_flat_map.hpp>
 #include <sfl/static_flat_set.hpp>
@@ -45,6 +51,10 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_ES, ZYDIS_REGISTER_CS, ZYDIS_REGISTER_SS,
                     ZYDIS_REGISTER_DS, ZYDIS_REGISTER_FS, ZYDIS_REGISTER_GS,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_CS,
+                    ZYDIS_REGISTER_DS,
+                };
             };
 
             struct Gp8Regs
@@ -54,6 +64,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_CH,   ZYDIS_REGISTER_DH,   ZYDIS_REGISTER_BH,   ZYDIS_REGISTER_SPL,  ZYDIS_REGISTER_BPL,
                     ZYDIS_REGISTER_SIL,  ZYDIS_REGISTER_DIL,  ZYDIS_REGISTER_R8B,  ZYDIS_REGISTER_R9B,  ZYDIS_REGISTER_R10B,
                     ZYDIS_REGISTER_R11B, ZYDIS_REGISTER_R12B, ZYDIS_REGISTER_R13B, ZYDIS_REGISTER_R14B, ZYDIS_REGISTER_R15B,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_AL,  ZYDIS_REGISTER_DL,  ZYDIS_REGISTER_BL,   ZYDIS_REGISTER_AH,  ZYDIS_REGISTER_CH,
+                    ZYDIS_REGISTER_DH,  ZYDIS_REGISTER_BH,  ZYDIS_REGISTER_SPL,  ZYDIS_REGISTER_BPL, ZYDIS_REGISTER_SIL,
+                    ZYDIS_REGISTER_DIL, ZYDIS_REGISTER_R8B, ZYDIS_REGISTER_R15B,
                 };
             };
 
@@ -65,6 +80,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_R8W,  ZYDIS_REGISTER_R9W,  ZYDIS_REGISTER_R10W, ZYDIS_REGISTER_R11W,
                     ZYDIS_REGISTER_R12W, ZYDIS_REGISTER_R13W, ZYDIS_REGISTER_R14W, ZYDIS_REGISTER_R15W,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_AX,  ZYDIS_REGISTER_CX,  ZYDIS_REGISTER_DX,   ZYDIS_REGISTER_BX,
+                    ZYDIS_REGISTER_SP,  ZYDIS_REGISTER_BP,  ZYDIS_REGISTER_SI,   ZYDIS_REGISTER_DI,
+                    ZYDIS_REGISTER_R8W, ZYDIS_REGISTER_R9W, ZYDIS_REGISTER_R15W,
+                };
             };
 
             struct Gp32Regs
@@ -73,6 +93,10 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_EAX,  ZYDIS_REGISTER_ECX,  ZYDIS_REGISTER_EDX,  ZYDIS_REGISTER_EBX,
                     ZYDIS_REGISTER_ESP,  ZYDIS_REGISTER_EBP,  ZYDIS_REGISTER_ESI,  ZYDIS_REGISTER_EDI,
                     ZYDIS_REGISTER_R8D,  ZYDIS_REGISTER_R9D,  ZYDIS_REGISTER_R10D, ZYDIS_REGISTER_R11D,
+                    ZYDIS_REGISTER_R12D, ZYDIS_REGISTER_R13D, ZYDIS_REGISTER_R14D, ZYDIS_REGISTER_R15D,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_EAX,  ZYDIS_REGISTER_ECX,  ZYDIS_REGISTER_EDX,  ZYDIS_REGISTER_EBX,
                     ZYDIS_REGISTER_R12D, ZYDIS_REGISTER_R13D, ZYDIS_REGISTER_R14D, ZYDIS_REGISTER_R15D,
                 };
             };
@@ -85,6 +109,10 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_R8,  ZYDIS_REGISTER_R9,  ZYDIS_REGISTER_R10, ZYDIS_REGISTER_R11,
                     ZYDIS_REGISTER_R12, ZYDIS_REGISTER_R13, ZYDIS_REGISTER_R14, ZYDIS_REGISTER_R15,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_RAX, ZYDIS_REGISTER_RCX, ZYDIS_REGISTER_RDX, ZYDIS_REGISTER_RBX,
+                    ZYDIS_REGISTER_R12, ZYDIS_REGISTER_R13, ZYDIS_REGISTER_R14, ZYDIS_REGISTER_R15,
+                };
             };
 
             struct Gp8MemRegs
@@ -92,6 +120,9 @@ namespace x86Tester::Generator
                 static constexpr ZydisRegister kTable[] = {
                     ZYDIS_REGISTER_NONE, ZYDIS_REGISTER_AL,  ZYDIS_REGISTER_CL,   ZYDIS_REGISTER_DL,
                     ZYDIS_REGISTER_BL,   ZYDIS_REGISTER_DIL, ZYDIS_REGISTER_R15B,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_NONE, ZYDIS_REGISTER_AL, ZYDIS_REGISTER_DL, ZYDIS_REGISTER_BL, ZYDIS_REGISTER_R15B,
                 };
             };
 
@@ -101,6 +132,12 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_NONE, ZYDIS_REGISTER_IP, ZYDIS_REGISTER_AX,
                     ZYDIS_REGISTER_CX,   ZYDIS_REGISTER_DX, ZYDIS_REGISTER_R15W,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_NONE,
+                    ZYDIS_REGISTER_IP,
+                    ZYDIS_REGISTER_AX,
+                    ZYDIS_REGISTER_R15W,
+                };
             };
 
             struct Gp32MemRegs
@@ -108,6 +145,12 @@ namespace x86Tester::Generator
                 static constexpr ZydisRegister kTable[] = {
                     ZYDIS_REGISTER_NONE, ZYDIS_REGISTER_EIP, ZYDIS_REGISTER_EAX,
                     ZYDIS_REGISTER_ECX,  ZYDIS_REGISTER_EDX, ZYDIS_REGISTER_R15D,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_NONE,
+                    ZYDIS_REGISTER_EIP,
+                    ZYDIS_REGISTER_EAX,
+                    ZYDIS_REGISTER_R15D,
                 };
             };
 
@@ -117,6 +160,12 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_NONE, ZYDIS_REGISTER_RIP, ZYDIS_REGISTER_RAX,
                     ZYDIS_REGISTER_RCX,  ZYDIS_REGISTER_RDX, ZYDIS_REGISTER_R15,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_NONE,
+                    ZYDIS_REGISTER_RIP,
+                    ZYDIS_REGISTER_RAX,
+                    ZYDIS_REGISTER_R15,
+                };
             };
 
             struct StRegs
@@ -125,6 +174,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_ST0, ZYDIS_REGISTER_ST1, ZYDIS_REGISTER_ST2, ZYDIS_REGISTER_ST3,
                     ZYDIS_REGISTER_ST4, ZYDIS_REGISTER_ST5, ZYDIS_REGISTER_ST6, ZYDIS_REGISTER_ST7,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_ST0,
+                    ZYDIS_REGISTER_ST3,
+                    ZYDIS_REGISTER_ST7,
+                };
             };
 
             struct MmRegs
@@ -132,6 +186,11 @@ namespace x86Tester::Generator
                 static constexpr ZydisRegister kTable[] = {
                     ZYDIS_REGISTER_MM0, ZYDIS_REGISTER_MM1, ZYDIS_REGISTER_MM2, ZYDIS_REGISTER_MM3,
                     ZYDIS_REGISTER_MM4, ZYDIS_REGISTER_MM5, ZYDIS_REGISTER_MM6, ZYDIS_REGISTER_MM7,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_MM0,
+                    ZYDIS_REGISTER_MM3,
+                    ZYDIS_REGISTER_MM7,
                 };
             };
 
@@ -147,6 +206,10 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_XMM24, ZYDIS_REGISTER_XMM25, ZYDIS_REGISTER_XMM26, ZYDIS_REGISTER_XMM27,
                     ZYDIS_REGISTER_XMM28, ZYDIS_REGISTER_XMM29, ZYDIS_REGISTER_XMM30, ZYDIS_REGISTER_XMM31,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_XMM0,  ZYDIS_REGISTER_XMM4,  ZYDIS_REGISTER_XMM8,  ZYDIS_REGISTER_XMM12,
+                    ZYDIS_REGISTER_XMM16, ZYDIS_REGISTER_XMM20, ZYDIS_REGISTER_XMM24, ZYDIS_REGISTER_XMM31,
+                };
             };
 
             struct YmmRegs
@@ -160,6 +223,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_YMM20, ZYDIS_REGISTER_YMM21, ZYDIS_REGISTER_YMM22, ZYDIS_REGISTER_YMM23,
                     ZYDIS_REGISTER_YMM24, ZYDIS_REGISTER_YMM25, ZYDIS_REGISTER_YMM26, ZYDIS_REGISTER_YMM27,
                     ZYDIS_REGISTER_YMM28, ZYDIS_REGISTER_YMM29, ZYDIS_REGISTER_YMM30, ZYDIS_REGISTER_YMM31,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_YMM0,  ZYDIS_REGISTER_YMM1,  ZYDIS_REGISTER_YMM2,  ZYDIS_REGISTER_YMM3,
+                    ZYDIS_REGISTER_YMM4,  ZYDIS_REGISTER_YMM8,  ZYDIS_REGISTER_YMM12, ZYDIS_REGISTER_YMM16,
+                    ZYDIS_REGISTER_YMM20, ZYDIS_REGISTER_YMM24, ZYDIS_REGISTER_YMM31,
                 };
             };
 
@@ -175,6 +243,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_ZMM24, ZYDIS_REGISTER_ZMM25, ZYDIS_REGISTER_ZMM26, ZYDIS_REGISTER_ZMM27,
                     ZYDIS_REGISTER_ZMM28, ZYDIS_REGISTER_ZMM29, ZYDIS_REGISTER_ZMM30, ZYDIS_REGISTER_ZMM31,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_ZMM0,  ZYDIS_REGISTER_ZMM1,  ZYDIS_REGISTER_ZMM2,  ZYDIS_REGISTER_ZMM3,
+                    ZYDIS_REGISTER_ZMM4,  ZYDIS_REGISTER_ZMM8,  ZYDIS_REGISTER_ZMM12, ZYDIS_REGISTER_ZMM16,
+                    ZYDIS_REGISTER_ZMM20, ZYDIS_REGISTER_ZMM24, ZYDIS_REGISTER_ZMM31,
+                };
             };
 
             struct TmmRegs
@@ -183,6 +256,11 @@ namespace x86Tester::Generator
                     ZYDIS_REGISTER_TMM0, ZYDIS_REGISTER_TMM1, ZYDIS_REGISTER_TMM2, ZYDIS_REGISTER_TMM3,
                     ZYDIS_REGISTER_TMM4, ZYDIS_REGISTER_TMM5, ZYDIS_REGISTER_TMM6, ZYDIS_REGISTER_TMM7,
                 };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_TMM0,
+                    ZYDIS_REGISTER_TMM4,
+                    ZYDIS_REGISTER_TMM7,
+                };
             };
 
             struct MaskRegs
@@ -190,6 +268,12 @@ namespace x86Tester::Generator
                 static constexpr ZydisRegister kTable[] = {
                     ZYDIS_REGISTER_K0, ZYDIS_REGISTER_K1, ZYDIS_REGISTER_K2, ZYDIS_REGISTER_K3,
                     ZYDIS_REGISTER_K4, ZYDIS_REGISTER_K5, ZYDIS_REGISTER_K6, ZYDIS_REGISTER_K7,
+                };
+                static constexpr ZydisRegister kTableSimple[] = {
+                    ZYDIS_REGISTER_K0,
+                    ZYDIS_REGISTER_K1,
+                    ZYDIS_REGISTER_K5,
+                    ZYDIS_REGISTER_K7,
                 };
             };
 
@@ -203,9 +287,10 @@ namespace x86Tester::Generator
             virtual bool advance() = 0;
         };
 
-        template<typename TClassTable> class RegT : public OperandBase
+        template<typename TClassTable, bool TSimple> class RegT : public OperandBase
         {
-            BaseGenerator<ZydisRegister> _gen{ TClassTable::kTable };
+            BaseGenerator<ZydisRegister> _gen{ TSimple ? std::span<const ZydisRegister>(TClassTable::kTableSimple)
+                                                       : std::span<const ZydisRegister>(TClassTable::kTable) };
 
         public:
             ZydisEncoderOperand current() override
@@ -222,17 +307,29 @@ namespace x86Tester::Generator
             }
         };
 
-        using Gp8 = RegT<Detail::Gp8Regs>;
-        using Gp16 = RegT<Detail::Gp16Regs>;
-        using Gp32 = RegT<Detail::Gp32Regs>;
-        using Gp64 = RegT<Detail::Gp64Regs>;
-        using St = RegT<Detail::StRegs>;
-        using Mmx = RegT<Detail::MmRegs>;
-        using Xmm = RegT<Detail::XmmRegs>;
-        using Ymm = RegT<Detail::YmmRegs>;
-        using Zmm = RegT<Detail::ZmmRegs>;
-        using Tmm = RegT<Detail::TmmRegs>;
-        using Mask = RegT<Detail::MaskRegs>;
+        using Gp8 = RegT<Detail::Gp8Regs, false>;
+        using Gp16 = RegT<Detail::Gp16Regs, false>;
+        using Gp32 = RegT<Detail::Gp32Regs, false>;
+        using Gp64 = RegT<Detail::Gp64Regs, false>;
+        using St = RegT<Detail::StRegs, false>;
+        using Mmx = RegT<Detail::MmRegs, false>;
+        using Xmm = RegT<Detail::XmmRegs, false>;
+        using Ymm = RegT<Detail::YmmRegs, false>;
+        using Zmm = RegT<Detail::ZmmRegs, false>;
+        using Tmm = RegT<Detail::TmmRegs, false>;
+        using Mask = RegT<Detail::MaskRegs, false>;
+
+        using Gp8Simple = RegT<Detail::Gp8Regs, true>;
+        using Gp16Simple = RegT<Detail::Gp16Regs, true>;
+        using Gp32Simple = RegT<Detail::Gp32Regs, true>;
+        using Gp64Simple = RegT<Detail::Gp64Regs, true>;
+        using StSimple = RegT<Detail::StRegs, true>;
+        using MmxSimple = RegT<Detail::MmRegs, true>;
+        using XmmSimple = RegT<Detail::XmmRegs, true>;
+        using YmmSimple = RegT<Detail::YmmRegs, true>;
+        using ZmmSimple = RegT<Detail::ZmmRegs, true>;
+        using TmmSimple = RegT<Detail::TmmRegs, true>;
+        using MaskSimple = RegT<Detail::MaskRegs, true>;
 
         struct RegImplicit : public OperandBase
         {
@@ -280,13 +377,43 @@ namespace x86Tester::Generator
             }
         };
 
-        class Rel8 : public OperandBase
+        class ImmSimple : public OperandBase
+        {
+            static constexpr int64_t kValues[] = {
+                0,
+                1,
+                3,
+            };
+
+            BaseGenerator<int64_t> _gen{ std::span(kValues) };
+
+        public:
+            ZydisEncoderOperand current() override
+            {
+                ZydisEncoderOperand op{};
+                op.type = ZYDIS_OPERAND_TYPE_IMMEDIATE;
+                op.imm.s = _gen.current();
+                return op;
+            }
+
+            bool advance() override
+            {
+                return _gen.advance();
+            }
+        };
+
+        template<bool TSimple> class Rel8 : public OperandBase
         {
             static constexpr int64_t kValues[] = {
                 2, 8, 16, -2, -8, -16,
             };
+            static constexpr int64_t kValuesSimple[] = {
+                16,
+                -16,
+            };
 
-            BaseGenerator<int64_t> _gen{ std::span(kValues) };
+            BaseGenerator<int64_t> _gen{ TSimple ? std::span<const int64_t>(kValuesSimple)
+                                                 : std::span<const int64_t>(kValues) };
 
         public:
             ZydisEncoderOperand current() override
@@ -303,13 +430,18 @@ namespace x86Tester::Generator
             }
         };
 
-        class Rel32 : public OperandBase
+        template<bool TSimple> class Rel32 : public OperandBase
         {
             static constexpr int64_t kValues[] = {
                 1024, 0x7FFFFFFF, 0x7FFFFFFF, -1024, -0x7FFFFFFF, -0x7FFFFFFF,
             };
+            static constexpr int64_t kValuesSimple[] = {
+                1024,
+                -1024,
+            };
 
-            BaseGenerator<int64_t> _gen{ std::span(kValues) };
+            BaseGenerator<int64_t> _gen{ TSimple ? std::span<const int64_t>(kValuesSimple)
+                                                 : std::span<const int64_t>(kValues) };
 
         public:
             ZydisEncoderOperand current() override
@@ -326,20 +458,34 @@ namespace x86Tester::Generator
             }
         };
 
-        template<typename TRegClass, uint16_t TMemSize> class MemT : public OperandBase
+        template<typename TRegClass, uint16_t TMemSize, bool TSimple> class MemT : public OperandBase
         {
             static constexpr uint8_t kScaleValues[] = { 1, 4, 8 };
+            static constexpr uint8_t kScaleValuesSimple[] = { 1 };
+
             static constexpr int64_t kImmValues[] = {
                 0,
                 0x89FFFFF,
                 -0x89FFFFF,
             };
+            static constexpr int64_t kImmValuesSimple[] = {
+                0,
+            };
 
-            BaseGenerator<ZydisRegister> _seg{ std::span(Detail::SegRegs::kTable) };
-            BaseGenerator<ZydisRegister> _base{ std::span(TRegClass::kTable) };
-            BaseGenerator<ZydisRegister> _index{ std::span(TRegClass::kTable) };
-            BaseGenerator<int64_t> _disp{ std::span(kImmValues) };
-            BaseGenerator<uint8_t> _scale{ std::span(kScaleValues) };
+            BaseGenerator<ZydisRegister> _seg{ TSimple ? std::span<const ZydisRegister>(Detail::SegRegs::kTable)
+                                                       : std::span<const ZydisRegister>(Detail::SegRegs::kTable) };
+
+            BaseGenerator<ZydisRegister> _base{ TSimple ? std::span<const ZydisRegister>(TRegClass::kTableSimple)
+                                                        : std::span<const ZydisRegister>(TRegClass::kTable) };
+
+            BaseGenerator<ZydisRegister> _index{ TSimple ? std::span<const ZydisRegister>(TRegClass::kTableSimple)
+                                                         : std::span<const ZydisRegister>(TRegClass::kTable) };
+
+            BaseGenerator<int64_t> _disp{ TSimple ? std::span<const int64_t>(kImmValuesSimple)
+                                                  : std::span<const int64_t>(kImmValues) };
+
+            BaseGenerator<uint8_t> _scale{ TSimple ? std::span<const uint8_t>(kScaleValues)
+                                                   : std::span<const uint8_t>(kScaleValues) };
 
         public:
             ZydisEncoderOperand current() override
@@ -369,10 +515,15 @@ namespace x86Tester::Generator
             }
         };
 
-        using Mem8 = MemT<Detail::Gp8MemRegs, 1>;
-        using Mem16 = MemT<Detail::Gp16MemRegs, 2>;
-        using Mem32 = MemT<Detail::Gp32MemRegs, 4>;
-        using Mem64 = MemT<Detail::Gp64MemRegs, 8>;
+        using Mem8 = MemT<Detail::Gp8MemRegs, 1, false>;
+        using Mem16 = MemT<Detail::Gp16MemRegs, 2, false>;
+        using Mem32 = MemT<Detail::Gp32MemRegs, 4, false>;
+        using Mem64 = MemT<Detail::Gp64MemRegs, 8, false>;
+
+        using Mem8Simple = MemT<Detail::Gp8MemRegs, 1, true>;
+        using Mem16Simple = MemT<Detail::Gp16MemRegs, 2, true>;
+        using Mem32Simple = MemT<Detail::Gp32MemRegs, 4, true>;
+        using Mem64Simple = MemT<Detail::Gp64MemRegs, 8, true>;
 
         class Operand
         {
@@ -457,7 +608,15 @@ namespace x86Tester::Generator
 
     } // namespace Generators
 
-    static Generators::Operand buildOpGenerators(ZydisMnemonic mnemonic, const ZydisOperandDefinition& opDef)
+    template<typename Full, typename Simple> static void addSel(Generators::Operand& gens, bool simplified)
+    {
+        if (simplified)
+            gens.add<Simple>();
+        else
+            gens.add<Full>();
+    }
+
+    static Generators::Operand buildOpGenerators(ZydisMnemonic mnemonic, const ZydisOperandDefinition& opDef, bool simplified)
     {
         Generators::Operand gens;
 
@@ -473,70 +632,73 @@ namespace x86Tester::Generator
             case ZYDIS_SEMANTIC_OPTYPE_IMPLICIT_REG:
                 handleImplicitReg();
                 break;
+
             case ZYDIS_SEMANTIC_OPTYPE_GPR8:
-                gens.add<Generators::Gp8>();
+                addSel<Generators::Gp8, Generators::Gp8Simple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR16:
-                gens.add<Generators::Gp16>();
+                addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR32:
-                gens.add<Generators::Gp32>();
+                addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR64:
-                gens.add<Generators::Gp64>();
+                addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
                 break;
+
+            case ZYDIS_SEMANTIC_OPTYPE_GPR_ASZ:
             case ZYDIS_SEMANTIC_OPTYPE_GPR16_32_64:
-                gens.add<Generators::Gp16>();
-                gens.add<Generators::Gp32>();
-                gens.add<Generators::Gp64>();
+                addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
+                addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
+                addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR32_32_64:
-                gens.add<Generators::Gp32>();
-                gens.add<Generators::Gp64>();
+                addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
+                addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR16_32_32:
-                gens.add<Generators::Gp16>();
-                gens.add<Generators::Gp32>();
+                addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
+                addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
                 break;
-            case ZYDIS_SEMANTIC_OPTYPE_GPR_ASZ:
-                gens.add<Generators::Gp16>();
-                gens.add<Generators::Gp32>();
-                gens.add<Generators::Gp64>();
-                break;
+
             case ZYDIS_SEMANTIC_OPTYPE_IMM:
-                gens.add<Generators::Imm>();
+                addSel<Generators::Imm, Generators::ImmSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_FPR:
-                gens.add<Generators::St>();
+                addSel<Generators::St, Generators::StSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_MMX:
-                gens.add<Generators::Mmx>();
+                addSel<Generators::Mmx, Generators::MmxSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_XMM:
-                gens.add<Generators::Xmm>();
+                addSel<Generators::Xmm, Generators::XmmSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_YMM:
-                gens.add<Generators::Ymm>();
+                addSel<Generators::Ymm, Generators::YmmSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_MASK:
-                gens.add<Generators::Mask>();
+                addSel<Generators::Mask, Generators::MaskSimple>(gens, simplified);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_ZMM:
-                gens.add<Generators::Zmm>();
+                addSel<Generators::Zmm, Generators::ZmmSimple>(gens, simplified);
                 break;
+
             case ZYDIS_SEMANTIC_OPTYPE_REL:
-                gens.add<Generators::Rel8>();
-                gens.add<Generators::Rel32>();
+                addSel<Generators::Rel8<false>, Generators::Rel8<true>>(gens, simplified);
+                addSel<Generators::Rel32<false>, Generators::Rel32<true>>(gens, simplified);
                 break;
+
             case ZYDIS_SEMANTIC_OPTYPE_AGEN:
-                gens.add<Generators::Mem8>();
-                gens.add<Generators::Mem16>();
-                gens.add<Generators::Mem32>();
-                gens.add<Generators::Mem64>();
+                addSel<Generators::Mem8, Generators::Mem8Simple>(gens, simplified);
+                addSel<Generators::Mem16, Generators::Mem16Simple>(gens, simplified);
+                addSel<Generators::Mem32, Generators::Mem32Simple>(gens, simplified);
+                addSel<Generators::Mem64, Generators::Mem64Simple>(gens, simplified);
                 break;
+
             default:
                 break;
         }
+
         return gens;
     }
 
@@ -548,50 +710,64 @@ namespace x86Tester::Generator
         return filter.mnemonics.test(static_cast<size_t>(mnemonic));
     }
 
-    static std::vector<Generators::Instr> createGenerators(const Filter& filter)
+    static void createGeneratorsImpl(ZydisMnemonic mnemonic, bool simplified, std::vector<Generators::Instr>& instrs)
+    {
+        const ZydisEncodableInstruction* entries = nullptr;
+        const auto countEntries = ZydisGetEncodableInstructions((ZydisMnemonic)mnemonic, &entries);
+
+        for (ZyanU8 i = 0; i < countEntries; ++i)
+        {
+            const ZydisEncodableInstruction& entry = entries[i];
+
+            const ZydisInstructionDefinition* base_definition = nullptr;
+            ZydisGetInstructionDefinition(
+                (ZydisInstructionEncoding)entry.encoding, entry.instruction_reference, &base_definition);
+
+            const ZydisOperandDefinition* operandDefs = ZydisGetOperandDefinitions(base_definition);
+
+            Generators::Instr instr((ZydisMnemonic)mnemonic);
+
+            bool badCombination = false;
+            for (uint8_t j = 0; j < base_definition->operand_count_visible; ++j)
+            {
+                const ZydisOperandDefinition& opDef = operandDefs[j];
+
+                auto opGen = buildOpGenerators((ZydisMnemonic)mnemonic, opDef, simplified);
+                if (opGen.empty())
+                {
+                    badCombination = true;
+                    break;
+                }
+
+                instr.addOpGen(std::move(opGen));
+            }
+
+            if (badCombination)
+                continue;
+
+            instrs.push_back(std::move(instr));
+        }
+    }
+
+    static std::vector<Generators::Instr> createGenerators(ZydisMnemonic mnemonic, bool simplified)
+    {
+        std::vector<Generators::Instr> instrs;
+
+        createGeneratorsImpl(mnemonic, simplified, instrs);
+
+        return instrs;
+    }
+
+    static std::vector<Generators::Instr> createGenerators(const Filter& filter, bool simplified)
     {
         std::vector<Generators::Instr> instrs;
 
         for (auto mnemonic = ZYDIS_MNEMONIC_INVALID + 1; mnemonic < ZYDIS_MNEMONIC_MAX_VALUE + 1; mnemonic++)
         {
-            if (!mnemonicPassesFilter((ZydisMnemonic)mnemonic, filter))
+            if (!filter.passes((ZydisMnemonic)mnemonic))
                 continue;
 
-            const ZydisEncodableInstruction* entries = nullptr;
-            const auto countEntries = ZydisGetEncodableInstructions((ZydisMnemonic)mnemonic, &entries);
-
-            for (ZyanU8 i = 0; i < countEntries; ++i)
-            {
-                const ZydisEncodableInstruction& entry = entries[i];
-
-                const ZydisInstructionDefinition* base_definition = nullptr;
-                ZydisGetInstructionDefinition(
-                    (ZydisInstructionEncoding)entry.encoding, entry.instruction_reference, &base_definition);
-
-                const ZydisOperandDefinition* operandDefs = ZydisGetOperandDefinitions(base_definition);
-
-                Generators::Instr instr((ZydisMnemonic)mnemonic);
-
-                bool badCombination = false;
-                for (uint8_t j = 0; j < base_definition->operand_count_visible; ++j)
-                {
-                    const ZydisOperandDefinition& opDef = operandDefs[j];
-
-                    auto opGen = buildOpGenerators((ZydisMnemonic)mnemonic, opDef);
-                    if (opGen.empty())
-                    {
-                        badCombination = true;
-                        break;
-                    }
-
-                    instr.addOpGen(std::move(opGen));
-                }
-
-                if (badCombination)
-                    continue;
-
-                instrs.push_back(std::move(instr));
-            }
+            createGeneratorsImpl((ZydisMnemonic)mnemonic, simplified, instrs);
         }
 
         return instrs;
@@ -680,86 +856,19 @@ namespace x86Tester::Generator
         }
     };
 
-    static bool isSupportedInstruction(const ZydisDisassembledInstruction& instr)
+    static bool isSupportMnemonic(ZydisMnemonic mnemonic)
     {
-        if ((instr.info.attributes & ZYDIS_ATTRIB_IS_PRIVILEGED) != 0)
-            return false;
-
-        if (!isSupportedCategory(instr.info.meta.category))
-            return false;
-
-        // APX uses the extended GPRs R16-R31, which the harness CONTEXT has no storage for.
-        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
-            return false;
-
-        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_UINTR)
-            return false;
-
-        if (!isSupportedIsaExt(instr.info.meta.isa_ext))
-            return false;
-
-        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
-            return false;
-        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX)
-            return false;
-
-        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
-        {
-            const auto& op = instr.operands[i];
-            // A memory read/write operand the harness can't set up disqualifies the instruction, but an
-            // AGEN operand only computes an address (its base/index registers are read, never the
-            // memory itself), so it is fine.
-            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN)
-                return false;
-            if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
-            {
-                switch (ZydisRegisterGetClass(op.reg.value))
-                {
-                    case ZYDIS_REGCLASS_MMX:
-                    case ZYDIS_REGCLASS_BOUND:
-                    case ZYDIS_REGCLASS_TMM:
-                        return false;
-                    case ZYDIS_REGCLASS_YMM:
-                        if (!Cpuid::getCpuInfo().avx2)
-                            return false;
-                        break;
-                    case ZYDIS_REGCLASS_ZMM:
-                    case ZYDIS_REGCLASS_MASK:
-                        return false;
-                }
-
-                const auto enclosing = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.reg.value);
-                if (enclosing >= ZYDIS_REGISTER_R16 && enclosing <= ZYDIS_REGISTER_R31)
-                    return false;
-            }
-        }
-
-        switch (instr.info.mnemonic)
+        switch (mnemonic)
         {
             case ZYDIS_MNEMONIC_CLI:
             case ZYDIS_MNEMONIC_STI:
-            case ZYDIS_MNEMONIC_CPUID:
-            case ZYDIS_MNEMONIC_RDTSC:
-            case ZYDIS_MNEMONIC_RDTSCP:
-            case ZYDIS_MNEMONIC_RDPMC:
-            case ZYDIS_MNEMONIC_RDRAND:
-            case ZYDIS_MNEMONIC_RDSEED:
-            case ZYDIS_MNEMONIC_RDPID:
-            case ZYDIS_MNEMONIC_RDPRU:
-            case ZYDIS_MNEMONIC_RDFSBASE:
-            case ZYDIS_MNEMONIC_RDGSBASE:
-            case ZYDIS_MNEMONIC_WRFSBASE:
-            case ZYDIS_MNEMONIC_WRGSBASE:
-            case ZYDIS_MNEMONIC_SLDT:
-            case ZYDIS_MNEMONIC_STR:
-            case ZYDIS_MNEMONIC_SGDT:
-            case ZYDIS_MNEMONIC_SIDT:
-            case ZYDIS_MNEMONIC_SMSW:
             case ZYDIS_MNEMONIC_UD0:
             case ZYDIS_MNEMONIC_UD1:
             case ZYDIS_MNEMONIC_UD2:
-            case ZYDIS_MNEMONIC_XGETBV:
-            case ZYDIS_MNEMONIC_XTEST:
+            case ZYDIS_MNEMONIC_RDRAND:
+            case ZYDIS_MNEMONIC_RDSEED:
+            case ZYDIS_MNEMONIC_RDTSC:
+            case ZYDIS_MNEMONIC_RDTSCP:
                 return false;
 
             // x87 instructions that push or pop the FPU stack change TOP, which breaks the
@@ -811,8 +920,236 @@ namespace x86Tester::Generator
         return true;
     }
 
+    static bool isSupportedCategory(ZydisInstructionCategory category)
+    {
+        switch (category)
+        {
+            case ZYDIS_CATEGORY_COND_BR:
+            case ZYDIS_CATEGORY_UNCOND_BR:
+            case ZYDIS_CATEGORY_CALL:
+            case ZYDIS_CATEGORY_RET:
+            case ZYDIS_CATEGORY_INTERRUPT:
+            case ZYDIS_CATEGORY_SYSCALL:
+            case ZYDIS_CATEGORY_SYSTEM:
+            case ZYDIS_CATEGORY_SYSRET:
+            case ZYDIS_CATEGORY_IO:
+            case ZYDIS_CATEGORY_IOSTRINGOP:
+            case ZYDIS_CATEGORY_VTX:
+            case ZYDIS_CATEGORY_TSX_LDTRK:
+            case ZYDIS_CATEGORY_KEYLOCKER:
+            case ZYDIS_CATEGORY_KEYLOCKER_WIDE:
+            case ZYDIS_CATEGORY_PT:
+            case ZYDIS_CATEGORY_WAITPKG:
+            case ZYDIS_CATEGORY_CET:
+            case ZYDIS_CATEGORY_RDRAND:
+            case ZYDIS_CATEGORY_RDSEED:
+            case ZYDIS_CATEGORY_RDPRU:
+            case ZYDIS_CATEGORY_RDWRFSGS:
+            case ZYDIS_CATEGORY_XSAVE:
+            case ZYDIS_CATEGORY_SGX:
+            case ZYDIS_CATEGORY_KNCSCALAR:
+                return false;
+        }
+        return true;
+    }
+
+    static bool isSupportedIsaExt(ZydisISAExt isaExt)
+    {
+        const auto& info = Cpuid::getCpuInfo();
+
+        switch (isaExt)
+        {
+            case ZYDIS_ISA_EXT_SSE4A:
+                return info.sse4a;
+            case ZYDIS_ISA_EXT_XOP:
+                return info.xop;
+            case ZYDIS_ISA_EXT_FMA4:
+                return info.fma4;
+            case ZYDIS_ISA_EXT_TBM:
+                return info.tbm;
+            case ZYDIS_ISA_EXT_GFNI:
+                return info.gfni;
+            case ZYDIS_ISA_EXT_VAES:
+                return info.vaes;
+            case ZYDIS_ISA_EXT_VPCLMULQDQ:
+                return info.vpclmulqdq;
+            case ZYDIS_ISA_EXT_AVX_VNNI:
+                return info.avxvnni;
+            case ZYDIS_ISA_EXT_SHA:
+                return info.sha;
+            case ZYDIS_ISA_EXT_SHA512:
+                return info.sha512;
+            case ZYDIS_ISA_EXT_SM3:
+                return info.sm3;
+            case ZYDIS_ISA_EXT_SM4:
+                return info.sm4;
+            case ZYDIS_ISA_EXT_AVX_IFMA:
+                return info.avxifma;
+            case ZYDIS_ISA_EXT_AVX_NE_CONVERT:
+                return info.avxneconvert;
+            case ZYDIS_ISA_EXT_AVX_VNNI_INT8:
+                return info.avxvnniint8;
+            case ZYDIS_ISA_EXT_AVX_VNNI_INT16:
+                return info.avxvnniint16;
+            case ZYDIS_ISA_EXT_CET:
+                return info.cet;
+            case ZYDIS_ISA_EXT_PKU:
+                return info.pku;
+            case ZYDIS_ISA_EXT_KEYLOCKER:
+            case ZYDIS_ISA_EXT_KEYLOCKER_WIDE:
+                return info.keylocker;
+            case ZYDIS_ISA_EXT_MOVDIR:
+                return info.movdir;
+            case ZYDIS_ISA_EXT_ENQCMD:
+                return info.enqcmd;
+            case ZYDIS_ISA_EXT_RDPID:
+                return info.rdpid;
+            case ZYDIS_ISA_EXT_AVX:
+                return info.avx;
+            case ZYDIS_ISA_EXT_AVX2:
+                return info.avx2;
+            case ZYDIS_ISA_EXT_FMA:
+                return info.fma;
+            case ZYDIS_ISA_EXT_AES:
+                return info.aes;
+            case ZYDIS_ISA_EXT_AVXAES:
+                return info.aes && info.avx;
+            case ZYDIS_ISA_EXT_PCLMULQDQ:
+                return info.pclmulqdq;
+            case ZYDIS_ISA_EXT_F16C:
+                return info.f16c;
+            case ZYDIS_ISA_EXT_LZCNT:
+                return info.lzcnt;
+            case ZYDIS_ISA_EXT_ADOX_ADCX:
+                return info.adx;
+            case ZYDIS_ISA_EXT_RTM:
+                return info.rtm;
+            case ZYDIS_ISA_EXT_WAITPKG:
+                return info.waitpkg;
+            case ZYDIS_ISA_EXT_SERIALIZE:
+                return info.serialize;
+            case ZYDIS_ISA_EXT_AMX_TILE:
+            case ZYDIS_ISA_EXT_AMX_INT8:
+            case ZYDIS_ISA_EXT_AMX_BF16:
+            case ZYDIS_ISA_EXT_AMX_FP16:
+                return info.amx;
+            default:
+                return true;
+        }
+    }
+
+    static bool isSupportedInstruction(const ZydisDisassembledInstruction& instr)
+    {
+        if (!isSupportedCategory(instr.info.meta.category))
+            return false;
+
+        if (!isSupportMnemonic(instr.info.mnemonic))
+            return false;
+
+        if (!isSupportedIsaExt(instr.info.meta.isa_ext))
+            return false;
+
+        if ((instr.info.attributes & ZYDIS_ATTRIB_IS_PRIVILEGED) != 0)
+            return false;
+
+        // APX uses the extended GPRs R16-R31, which the harness CONTEXT has no storage for.
+        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXEVEX || instr.info.meta.isa_ext == ZYDIS_ISA_EXT_APXLEGACY)
+            return false;
+
+        if (instr.info.meta.isa_ext == ZYDIS_ISA_EXT_UINTR)
+            return false;
+
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_MVEX)
+            return false;
+        if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX)
+            return false;
+
+        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+        {
+            const auto& op = instr.operands[i];
+            // A memory read/write operand the harness can't set up disqualifies the instruction, but an
+            // AGEN operand only computes an address (its base/index registers are read, never the
+            // memory itself), so it is fine.
+            if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN)
+                return false;
+            if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
+            {
+                switch (ZydisRegisterGetClass(op.reg.value))
+                {
+                    case ZYDIS_REGCLASS_MMX:
+                    case ZYDIS_REGCLASS_BOUND:
+                    case ZYDIS_REGCLASS_TMM:
+                        return false;
+                    case ZYDIS_REGCLASS_YMM:
+                        if (!Cpuid::getCpuInfo().avx2)
+                            return false;
+                        break;
+                    case ZYDIS_REGCLASS_ZMM:
+                    case ZYDIS_REGCLASS_MASK:
+                        return false;
+                }
+
+                const auto enclosing = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.reg.value);
+                if (enclosing >= ZYDIS_REGISTER_R16 && enclosing <= ZYDIS_REGISTER_R31)
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    static bool isInstructionWritingRegs(const ZydisDisassembledInstruction& instr)
+    {
+        if (instr.info.cpu_flags->modified || instr.info.cpu_flags->undefined || instr.info.cpu_flags->set_0
+            || instr.info.cpu_flags->set_1)
+        {
+            return true;
+        }
+
+        if (instr.info.fpu_flags->modified || instr.info.fpu_flags->undefined || instr.info.fpu_flags->set_0
+            || instr.info.fpu_flags->set_1)
+        {
+            return true;
+        }
+
+        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+        {
+            const auto& op = instr.operands[i];
+
+            if (op.type != ZYDIS_OPERAND_TYPE_REGISTER)
+            {
+                continue;
+            }
+
+            if ((op.actions & ZYDIS_OPERAND_ACTION_MASK_WRITE) == 0)
+            {
+                continue;
+            }
+
+            switch (ZydisRegisterGetClass(op.reg.value))
+            {
+                case ZYDIS_REGCLASS_GPR8:
+                case ZYDIS_REGCLASS_GPR16:
+                case ZYDIS_REGCLASS_GPR32:
+                case ZYDIS_REGCLASS_GPR64:
+                case ZYDIS_REGCLASS_MMX:
+                case ZYDIS_REGCLASS_XMM:
+                case ZYDIS_REGCLASS_YMM:
+                case ZYDIS_REGCLASS_ZMM:
+                case ZYDIS_REGCLASS_MASK:
+                case ZYDIS_REGCLASS_FLAGS:
+                case ZYDIS_REGCLASS_X87:
+                    return true;
+                default:
+                    break;
+            }
+        }
+
+        return false;
+    }
+
     template<bool TBuildInParallel>
-    InstructionEntries buildInstructionsImpl(ZydisMachineMode mode, const Filter& filter, ProgressReportFn reporter)
+    InstructionEntries buildInstructionsImpl(ZydisMachineMode mode, ZydisMnemonic mnemonic, ProgressReportFn reporter)
     {
         InstructionEntries res;
 
@@ -820,7 +1157,7 @@ namespace x86Tester::Generator
         std::atomic<size_t> progress{};
         std::atomic<size_t> countInvalid{};
 
-        auto instrGenerators = createGenerators(filter);
+        auto instrGenerators = createGenerators(mnemonic, false);
 
         auto generateOne = [&](auto& instr) {
             for (;;)
@@ -880,32 +1217,35 @@ namespace x86Tester::Generator
         key += std::to_string(static_cast<int>(d.info.opcode));
 
         sfl::static_vector<ZydisRegister, 12> slots;
+
+        const auto slotOf = [&](ZydisRegister reg) -> int {
+            const auto root = getEnclosingReg(d.info.machine_mode, reg);
+            for (std::size_t s = 0; s < slots.size(); ++s)
+                if (slots[s] == root)
+                    return static_cast<int>(s);
+            const int slot = static_cast<int>(slots.size());
+            slots.push_back(root);
+            return slot;
+        };
+
+        const auto appendReg = [&](ZydisRegister reg) {
+            key += 'R';
+            key += std::to_string(static_cast<int>(ZydisRegisterGetClass(reg)));
+            key += '.';
+            key += std::to_string(static_cast<int>(getRegOffset(reg)));
+            key += '.';
+            key += std::to_string(slotOf(reg));
+            if (reg == ZYDIS_REGISTER_K0)
+                key += 'z';
+        };
+
         for (std::size_t i = 0; i < d.info.operand_count; ++i)
         {
             const auto& op = d.operands[i];
             key += ';';
             if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
             {
-                int slot = -1;
-                for (std::size_t s = 0; s < slots.size(); ++s)
-                    if (slots[s] == op.reg.value)
-                    {
-                        slot = static_cast<int>(s);
-                        break;
-                    }
-                if (slot < 0)
-                {
-                    slot = static_cast<int>(slots.size());
-                    slots.push_back(op.reg.value);
-                }
-                key += 'R';
-                key += std::to_string(static_cast<int>(ZydisRegisterGetClass(op.reg.value)));
-                key += '.';
-                key += std::to_string(static_cast<int>(getRegOffset(op.reg.value)));
-                key += '.';
-                key += std::to_string(slot);
-                if (op.reg.value == ZYDIS_REGISTER_K0)
-                    key += 'z';
+                appendReg(op.reg.value);
             }
             else if (op.type == ZYDIS_OPERAND_TYPE_IMMEDIATE)
             {
@@ -918,22 +1258,36 @@ namespace x86Tester::Generator
                 key += std::to_string(static_cast<int>(op.mem.type));
                 key += '.';
                 key += std::to_string(op.size);
+                key += '.';
+                if (op.mem.base != ZYDIS_REGISTER_NONE)
+                    appendReg(op.mem.base);
+                else
+                    key += 'n';
+                key += '.';
+                if (op.mem.index != ZYDIS_REGISTER_NONE)
+                    appendReg(op.mem.index);
+                else
+                    key += 'n';
+                key += '.';
+                key += std::to_string(static_cast<int>(op.mem.scale));
+                key += '.';
+                key += std::to_string(static_cast<long long>(op.mem.disp.value));
             }
         }
         return key;
     }
 
     InstructionEntries buildInstructions(
-        ZydisMachineMode mode, const Filter& filter, bool buildInParallel, ProgressReportFn reporter)
+        ZydisMachineMode mode, ZydisMnemonic mnemonic, bool buildInParallel, ProgressReportFn reporter)
     {
         auto entries = [&]() {
             if (buildInParallel)
             {
-                return buildInstructionsImpl<true>(mode, filter, reporter);
+                return buildInstructionsImpl<true>(mode, mnemonic, reporter);
             }
             else
             {
-                return buildInstructionsImpl<false>(mode, filter, reporter);
+                return buildInstructionsImpl<false>(mode, mnemonic, reporter);
             }
         }();
 
@@ -972,87 +1326,6 @@ namespace x86Tester::Generator
         return entries;
     }
 
-    bool isSupportedCategory(ZydisInstructionCategory category)
-    {
-        switch (category)
-        {
-            case ZYDIS_CATEGORY_COND_BR:
-            case ZYDIS_CATEGORY_UNCOND_BR:
-            case ZYDIS_CATEGORY_CALL:
-            case ZYDIS_CATEGORY_RET:
-            case ZYDIS_CATEGORY_INTERRUPT:
-            case ZYDIS_CATEGORY_SYSCALL:
-            case ZYDIS_CATEGORY_SYSRET:
-            case ZYDIS_CATEGORY_IO:
-            case ZYDIS_CATEGORY_IOSTRINGOP:
-            case ZYDIS_CATEGORY_KEYLOCKER:
-            case ZYDIS_CATEGORY_KEYLOCKER_WIDE:
-                return false;
-        }
-        return true;
-    }
-
-    bool isSupportedIsaExt(ZydisISAExt isaExt)
-    {
-        const auto& info = Cpuid::getCpuInfo();
-
-        switch (isaExt)
-        {
-            case ZYDIS_ISA_EXT_SSE4A:
-                return info.sse4a;
-            case ZYDIS_ISA_EXT_XOP:
-                return info.xop;
-            case ZYDIS_ISA_EXT_FMA4:
-                return info.fma4;
-            case ZYDIS_ISA_EXT_TBM:
-                return info.tbm;
-            case ZYDIS_ISA_EXT_GFNI:
-                return info.gfni;
-            case ZYDIS_ISA_EXT_VAES:
-                return info.vaes;
-            case ZYDIS_ISA_EXT_VPCLMULQDQ:
-                return info.vpclmulqdq;
-            case ZYDIS_ISA_EXT_AVX_VNNI:
-                return info.avxvnni;
-            case ZYDIS_ISA_EXT_SHA:
-                return info.sha;
-            case ZYDIS_ISA_EXT_SHA512:
-                return info.sha512;
-            case ZYDIS_ISA_EXT_SM3:
-                return info.sm3;
-            case ZYDIS_ISA_EXT_SM4:
-                return info.sm4;
-            case ZYDIS_ISA_EXT_AVX_IFMA:
-                return info.avxifma;
-            case ZYDIS_ISA_EXT_AVX_NE_CONVERT:
-                return info.avxneconvert;
-            case ZYDIS_ISA_EXT_AVX_VNNI_INT8:
-                return info.avxvnniint8;
-            case ZYDIS_ISA_EXT_AVX_VNNI_INT16:
-                return info.avxvnniint16;
-            case ZYDIS_ISA_EXT_CET:
-                return info.cet;
-            case ZYDIS_ISA_EXT_PKU:
-                return info.pku;
-            case ZYDIS_ISA_EXT_KEYLOCKER:
-            case ZYDIS_ISA_EXT_KEYLOCKER_WIDE:
-                return info.keylocker;
-            case ZYDIS_ISA_EXT_MOVDIR:
-                return info.movdir;
-            case ZYDIS_ISA_EXT_ENQCMD:
-                return info.enqcmd;
-            case ZYDIS_ISA_EXT_SERIALIZE:
-                return info.serialize;
-            case ZYDIS_ISA_EXT_AMX_TILE:
-            case ZYDIS_ISA_EXT_AMX_INT8:
-            case ZYDIS_ISA_EXT_AMX_BF16:
-            case ZYDIS_ISA_EXT_AMX_FP16:
-                return info.amx;
-            default:
-                return true;
-        }
-    }
-
     static ZydisStackWidth getStackWidth(ZydisMachineMode mode)
     {
         switch (mode)
@@ -1069,16 +1342,55 @@ namespace x86Tester::Generator
         return ZYDIS_STACK_WIDTH_64;
     }
 
-    std::vector<MnemonicInfo> buildMnemonicIndex(ZydisMachineMode mode)
+    sfl::static_vector<ZydisRegister, 7> getWrittenRegisters(const ZydisDisassembledInstruction& dis)
+    {
+        std::bitset<ZYDIS_REGISTER_MAX_VALUE + 1> roots;
+        sfl::static_vector<ZydisRegister, 7> result;
+
+        for (const auto reg : getRegsModified(dis))
+        {
+            const auto rootReg = getRootReg(dis.info.machine_mode, reg);
+            if (!roots.test(rootReg))
+            {
+                roots.set(rootReg);
+                result.push_back(rootReg);
+            }
+        }
+
+        return result;
+    }
+
+    sfl::static_vector<ZydisRegister, 7> getReadRegisters(const ZydisDisassembledInstruction& dis)
+    {
+        std::bitset<ZYDIS_REGISTER_MAX_VALUE + 1> roots;
+        sfl::static_vector<ZydisRegister, 7> result;
+
+        for (const auto reg : getRegsRead(dis))
+        {
+            if (!isRegFiltered(reg))
+            {
+                const auto rootReg = getRootReg(dis.info.machine_mode, reg);
+                if (!roots.test(rootReg))
+                {
+                    roots.set(rootReg);
+                    result.push_back(rootReg);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    std::vector<ZydisMnemonic> buildMnemonicIndex(ZydisMachineMode mode, const Filter& filter)
     {
         Logging::startProgress("Building instruction combination index...");
 
-        std::vector<MnemonicInfo> res(ZYDIS_MNEMONIC_MAX_VALUE + 1);
+        std::bitset<ZYDIS_MNEMONIC_MAX_VALUE + 1> selected;
 
         ZydisDecoder decoder{};
         ZydisDecoderInit(&decoder, mode, getStackWidth(mode));
 
-        auto generators = createGenerators(Filter{});
+        auto generators = createGenerators(filter, true);
 
         std::atomic<size_t> i = 0;
         size_t totalGenerators = generators.size();
@@ -1087,7 +1399,7 @@ namespace x86Tester::Generator
             Logging::updateProgress(i.fetch_add(1) + 1, totalGenerators);
 
             const auto mnemonic = instr.mnemonic();
-            if (res[mnemonic].encodable)
+            if (selected[mnemonic])
                 return;
 
             for (;;)
@@ -1097,11 +1409,19 @@ namespace x86Tester::Generator
                 {
                     ZydisDisassembledInstruction dis{};
                     if (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, encodeRes.buf, encodeRes.size, &dis.info, dis.operands))
-                        && isSupportedInstruction(dis))
+                        && isSupportedInstruction(dis) && filter.passes(dis.info.meta.category)
+                        && filter.passes(dis.info.meta.isa_ext))
                     {
-                        res[mnemonic].encodable = true;
-                        res[mnemonic].category = dis.info.meta.category;
-                        res[mnemonic].isaExt = dis.info.meta.isa_ext;
+                        if (!isInstructionWritingRegs(dis))
+                        {
+#ifndef NDEBUG
+                            const char* mnemonicStr = ZydisMnemonicGetString(dis.info.mnemonic);
+                            Logging::println("Instruction {} not writing regs", mnemonicStr);
+#endif
+                            return;
+                        }
+
+                        selected.set(mnemonic);
                         return;
                     }
                 }
@@ -1113,7 +1433,19 @@ namespace x86Tester::Generator
 
         Logging::endProgress();
 
-        return res;
+        std::vector<ZydisMnemonic> result;
+        for (int m = ZYDIS_MNEMONIC_INVALID + 1; m <= ZYDIS_MNEMONIC_MAX_VALUE; ++m)
+        {
+            if (!selected[m])
+                continue;
+            // The intentionally-undefined opcodes have encodings that disassemble inconsistently and
+            // destabilize generation; never build them.
+            if (m == ZYDIS_MNEMONIC_UD0 || m == ZYDIS_MNEMONIC_UD1 || m == ZYDIS_MNEMONIC_UD2)
+                continue;
+            result.push_back(static_cast<ZydisMnemonic>(m));
+        }
+
+        return result;
     }
 
     static std::atomic<bool> g_stopOnImpossible{ false };
@@ -1414,7 +1746,116 @@ namespace x86Tester::Generator
         return res;
     }
 
-    static std::vector<InputGenerator> setupInputGenerators(std::mt19937_64& prng, const ZydisDisassembledInstruction& instr)
+    static void hostCpuid(std::uint32_t leaf, std::uint32_t subleaf, std::uint32_t out[4])
+    {
+#ifdef _WIN32
+        int regs[4];
+        __cpuidex(regs, static_cast<int>(leaf), static_cast<int>(subleaf));
+        out[0] = static_cast<std::uint32_t>(regs[0]);
+        out[1] = static_cast<std::uint32_t>(regs[1]);
+        out[2] = static_cast<std::uint32_t>(regs[2]);
+        out[3] = static_cast<std::uint32_t>(regs[3]);
+#else
+        unsigned int a = 0, b = 0, c = 0, d = 0;
+        __cpuid_count(leaf, subleaf, a, b, c, d);
+        out[0] = a;
+        out[1] = b;
+        out[2] = c;
+        out[3] = d;
+#endif
+    }
+
+    static void buildCpuidPairs(CpuidSweep& sweep)
+    {
+        std::unordered_set<std::uint64_t> seen;
+        const auto add = [&](std::uint32_t leaf, std::uint32_t subleaf) {
+            const std::uint64_t key = (static_cast<std::uint64_t>(leaf) << 32) | subleaf;
+            if (seen.insert(key).second)
+                sweep.pairs.emplace_back(leaf, subleaf);
+        };
+
+        std::uint32_t r[4];
+        hostCpuid(0, 0, r);
+        const std::uint32_t maxStd = r[0];
+        hostCpuid(0x80000000u, 0, r);
+        const std::uint32_t maxExt = r[0];
+
+        std::uint32_t maxHyp = 0;
+        hostCpuid(0x40000000u, 0, r);
+        if (r[0] > 0x40000000u && r[0] <= 0x400000FFu)
+            maxHyp = r[0];
+
+        const auto enumRange = [&](std::uint32_t first, std::uint32_t last) {
+            for (std::uint64_t l = first; l <= last; ++l)
+            {
+                const auto leaf = static_cast<std::uint32_t>(l);
+                std::uint32_t out0[4];
+                hostCpuid(leaf, 0, out0);
+                add(leaf, 0);
+
+                std::uint32_t out1[4];
+                hostCpuid(leaf, 1, out1);
+                const bool varies = out1[0] != out0[0] || out1[1] != out0[1] || out1[2] != out0[2] || out1[3] != out0[3];
+                if (!varies)
+                    continue;
+
+                add(leaf, 1);
+                const bool sparse = leaf == 0x0Du;
+                int zeroRun = 0;
+                for (std::uint32_t sub = 2; sub < 64; ++sub)
+                {
+                    std::uint32_t o[4];
+                    hostCpuid(leaf, sub, o);
+                    if (o[0] == 0 && o[1] == 0 && o[2] == 0 && o[3] == 0)
+                    {
+                        if (!sparse && ++zeroRun >= 2)
+                            break;
+                    }
+                    else
+                    {
+                        zeroRun = 0;
+                        add(leaf, sub);
+                    }
+                }
+            }
+        };
+
+        enumRange(0, maxStd);
+        enumRange(0x80000000u, maxExt);
+        if (maxHyp != 0)
+            enumRange(0x40000000u, maxHyp);
+
+        add(maxStd + 1, 0);
+        add(0x40000000u, 0);
+        add(maxExt + 1, 0);
+        add(0xFFFFFFFFu, 0);
+
+        std::mt19937_64 rng(0x9E3779B97F4A7C15ull);
+        const std::uint32_t clusters[] = {
+            0, maxStd, 0x40000000u, 0x80000000u, maxExt, 0xC0000000u, 0xFFFFFFFFu,
+        };
+        std::size_t attempts = 0;
+        while (sweep.pairs.size() < 50000 && attempts < 5'000'000)
+        {
+            ++attempts;
+            std::uint32_t leaf;
+            if ((rng() & 1) == 0)
+            {
+                const auto center = clusters[rng() % (sizeof(clusters) / sizeof(clusters[0]))];
+                leaf = center + static_cast<std::uint32_t>(rng() % 256) - 128;
+            }
+            else
+            {
+                leaf = static_cast<std::uint32_t>(rng());
+            }
+            const std::uint32_t subleaf = (rng() & 3) == 0 ? static_cast<std::uint32_t>(rng() % 64)
+                                                           : static_cast<std::uint32_t>(rng());
+            add(leaf, subleaf);
+        }
+    }
+
+    static std::vector<InputGenerator> setupInputGenerators(
+        std::mt19937_64& prng, const ZydisDisassembledInstruction& instr, CpuidSweep* cpuidSweep)
     {
         std::vector<InputGenerator> generators;
 
@@ -1425,6 +1866,21 @@ namespace x86Tester::Generator
         {
             if (isRegFiltered(reg))
                 continue;
+
+            if (cpuidSweep != nullptr)
+            {
+                const auto root = getRootReg(instr.info.machine_mode, reg);
+                if (root == ZYDIS_REGISTER_RAX)
+                {
+                    generators.emplace_back(cpuidSweep, 0, true, prng);
+                    continue;
+                }
+                if (root == ZYDIS_REGISTER_RCX)
+                {
+                    generators.emplace_back(cpuidSweep, 1, false, prng);
+                    continue;
+                }
+            }
 
             const auto regSize = ZydisRegisterGetWidth(instr.info.machine_mode, reg);
             generators.emplace_back(regSize, prng);
@@ -1451,11 +1907,16 @@ namespace x86Tester::Generator
         ZydisDisassembledInstruction instr{};
         ZydisDisassembleIntel(mode, 0, instrData.data(), instrData.size(), &instr);
 
+        if (!isSupportedInstruction(instr))
+            return;
+
+        const bool isCpuid = instr.info.mnemonic == ZYDIS_MNEMONIC_CPUID;
+
         const auto isInputImmediate = isInputFromImmediate(instr);
         const auto maxAttempts = isInputImmediate ? kAbortTestCaseThreshold / 3 : kAbortTestCaseThreshold;
 
-        const auto testMatrix = generateTestMatrix(instr);
-        if (testMatrix.empty())
+        const auto testMatrix = isCpuid ? std::vector<TestBitInfo>{} : generateTestMatrix(instr);
+        if (!isCpuid && testMatrix.empty())
             return;
 
         auto ctx = Execution::ScopedContext(mode, instrData);
@@ -1469,6 +1930,33 @@ namespace x86Tester::Generator
 
         const auto seed = static_cast<std::size_t>(instr.info.mnemonic);
         std::mt19937_64 prng(seed);
+
+        CpuidSweep cpuidSweep;
+        if (isCpuid)
+            buildCpuidPairs(cpuidSweep);
+
+        auto inputGenerators = setupInputGenerators(prng, instr, isCpuid ? &cpuidSweep : nullptr);
+
+        if (isCpuid)
+        {
+            ctx.pinThread(0);
+            while (!cpuidSweep.exhausted())
+            {
+                TestCaseEntry input{};
+                advanceInputs(ctx, prng, inputGenerators, instr, input, 2);
+                if (!ctx.execute())
+                    return;
+                if (ctx.getExecutionStatus() != Execution::ExecutionStatus::Success)
+                    continue;
+
+                TestCaseEntry outA{};
+                captureOutputs(ctx, instr, outA);
+                input.outputRegs = std::move(outA.outputRegs);
+                input.outputFlags = outA.outputFlags;
+                testCase.entries.push_back(std::move(input));
+            }
+            return;
+        }
 
         sfl::static_flat_set<ZydisRegister, 10> readRoots;
         for (const auto reg : getRegsRead(instr))
@@ -1494,8 +1982,6 @@ namespace x86Tester::Generator
             }
             return ExceptionType::None;
         };
-
-        auto inputGenerators = setupInputGenerators(prng, instr);
 
         std::vector<bool> satisfied(testMatrix.size(), false);
         std::size_t satisfiedCount = 0;
@@ -1725,13 +2211,18 @@ namespace x86Tester::Generator
 
         testInstruction(mode, testCase);
 
+        ZydisDisassembledInstruction dis{};
+        const bool isCpuid = ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, instrData.data(), instrData.size(), &dis))
+            && dis.info.mnemonic == ZYDIS_MNEMONIC_CPUID;
+
         // Remove duplicate entries.
         std::sort(testCase.entries.begin(), testCase.entries.end());
 
         auto last = std::unique(testCase.entries.begin(), testCase.entries.end());
         testCase.entries.erase(last, testCase.entries.end());
 
-        minimizeEntries(testCase.entries);
+        if (!isCpuid)
+            minimizeEntries(testCase.entries);
         std::sort(testCase.entries.begin(), testCase.entries.end());
 
         return testCase;
@@ -1753,8 +2244,17 @@ namespace x86Tester::Generator
         sfl::static_flat_map<ZydisRegister, ZydisRegister, 10> rootMap;
         for (std::size_t i = 0; i < dr.info.operand_count && i < dv.info.operand_count; ++i)
         {
-            if (dr.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER && dv.operands[i].type == ZYDIS_OPERAND_TYPE_REGISTER)
-                rootMap[getRootReg(mode, dr.operands[i].reg.value)] = getRootReg(mode, dv.operands[i].reg.value);
+            const auto& r = dr.operands[i];
+            const auto& v = dv.operands[i];
+            if (r.type == ZYDIS_OPERAND_TYPE_REGISTER && v.type == ZYDIS_OPERAND_TYPE_REGISTER)
+                rootMap[getRootReg(mode, r.reg.value)] = getRootReg(mode, v.reg.value);
+            else if (r.type == ZYDIS_OPERAND_TYPE_MEMORY && v.type == ZYDIS_OPERAND_TYPE_MEMORY)
+            {
+                if (r.mem.base != ZYDIS_REGISTER_NONE && v.mem.base != ZYDIS_REGISTER_NONE)
+                    rootMap[getRootReg(mode, r.mem.base)] = getRootReg(mode, v.mem.base);
+                if (r.mem.index != ZYDIS_REGISTER_NONE && v.mem.index != ZYDIS_REGISTER_NONE)
+                    rootMap[getRootReg(mode, r.mem.index)] = getRootReg(mode, v.mem.index);
+            }
         }
 
         const auto remap = [&](sfl::small_flat_map<ZydisRegister, RegTestData, 2>& regs) {

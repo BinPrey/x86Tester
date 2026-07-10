@@ -98,6 +98,8 @@ namespace x86Tester::Cpuid
             cpuid(7u, 0, r);
             info.bmi1 = (r[1] & (1u << 3)) != 0;
             info.avx2 = (r[1] & (1u << 5)) != 0;
+            info.rtm = (r[1] & (1u << 11)) != 0;
+            info.waitpkg = (r[2] & (1u << 5)) != 0;
             info.avx512f = (r[1] & (1u << 16)) != 0;
             info.bmi2 = (r[1] & (1u << 8)) != 0;
             info.rdseed = (r[1] & (1u << 18)) != 0;
@@ -111,6 +113,7 @@ namespace x86Tester::Cpuid
             info.keylocker = (r[2] & (1u << 23)) != 0;
             info.movdir = (r[2] & ((1u << 27) | (1u << 28))) != 0;
             info.enqcmd = (r[2] & (1u << 29)) != 0;
+            info.rdpid = (r[2] & (1u << 22)) != 0;
             info.serialize = (r[3] & (1u << 14)) != 0;
             info.amx = (r[3] & ((1u << 22) | (1u << 24) | (1u << 25))) != 0;
 

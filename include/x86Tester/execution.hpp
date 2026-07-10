@@ -33,6 +33,8 @@ namespace x86Tester::Execution
 
     bool execute(Context* ctx);
 
+    void pinThread(Context* ctx, unsigned core);
+
     void cleanup(Context* ctx);
 
     ExecutionStatus getExecutionStatus(Context* ctx);
@@ -65,6 +67,11 @@ namespace x86Tester::Execution
         bool execute()
         {
             return x86Tester::Execution::execute(ctx);
+        }
+
+        void pinThread(unsigned core)
+        {
+            x86Tester::Execution::pinThread(ctx, core);
         }
 
         uint64_t getBaseAddress() const

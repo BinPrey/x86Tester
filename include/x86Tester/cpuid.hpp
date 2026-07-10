@@ -38,6 +38,9 @@ namespace x86Tester::Cpuid
         bool adx : 1;
         bool rdrand : 1;
         bool rdseed : 1;
+        bool rdpid : 1;
+        bool rtm : 1;
+        bool waitpkg : 1;
         bool gfni : 1;
         bool vaes : 1;
         bool vpclmulqdq : 1;

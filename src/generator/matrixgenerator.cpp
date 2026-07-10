@@ -166,18 +166,26 @@ namespace x86Tester::Generator
 
                 const auto& m = ops[1].mem;
                 const std::uint64_t disp = static_cast<std::uint64_t>(m.disp.value);
+                const bool hasBase = m.base != ZYDIS_REGISTER_NONE;
+                const bool hasIndex = m.index != ZYDIS_REGISTER_NONE;
 
-                if (m.base != ZYDIS_REGISTER_NONE && m.index == m.base && m.scale == 1)
+                // Effective address = base + index*scale + disp. The register terms contribute a
+                // value that is a guaranteed multiple of 2^knownLow, so the low knownLow bits are
+                // fixed by disp alone. base spans every bit; index*scale clears log2(scale) low
+                // bits; when base and index are the same register the multiplier is (1+scale).
+                unsigned knownLow = 0;
+                if (!hasBase && !hasIndex)
+                    knownLow = addrW;
+                else if (!hasBase && hasIndex)
+                    knownLow = std::countr_zero(static_cast<unsigned>(m.scale));
+                else if (hasBase && (!hasIndex || m.index == m.base))
+                    knownLow = std::countr_zero(static_cast<unsigned>(hasIndex ? (1u + m.scale) : 1u));
+
+                if (knownLow > addrW)
+                    knownLow = addrW;
+                if (knownLow > 0)
                 {
-                    if ((disp & 1) != 0)
-                        kb.ones |= 1ull & mask;
-                    else
-                        kb.zeros |= 1ull & mask;
-                }
-                else if (m.base == ZYDIS_REGISTER_NONE && m.index != ZYDIS_REGISTER_NONE && m.scale > 1)
-                {
-                    const unsigned sh = static_cast<unsigned>(std::log2(m.scale));
-                    const std::uint64_t lowMask = ((sh >= 64) ? ~0ull : ((1ull << sh) - 1)) & mask;
+                    const std::uint64_t lowMask = ((knownLow >= 64) ? ~0ull : ((1ull << knownLow) - 1)) & mask;
                     kb.ones |= disp & lowMask;
                     kb.zeros |= (~disp) & lowMask;
                 }

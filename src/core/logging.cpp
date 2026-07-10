@@ -1,101 +1,194 @@
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <fmt/format.h>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 #include <x86Tester/logging.hpp>
 
 #include "sysinfo.hpp"
+
+#ifdef _WIN32
+#    define WIN32_LEAN_AND_MEAN
+#    define NOMINMAX
+#    include <windows.h>
+#else
+#    include <limits.h>
+#    include <unistd.h>
+#endif
 
 namespace x86Tester::Logging
 {
     using clock = std::chrono::high_resolution_clock;
 
-    static int _lastProgress = -1;
-    static bool _inProgress = false;
-    static std::string _progressName;
-    static auto _nextReport = clock::now();
-    static double _progress = 0.0;
-    static size_t _progressLineLen = 0;
-    static clock::time_point _startTime;
-    static std::atomic<int> _progressPct{ -1 };
-
-    static void printProgress(std::string_view name, double percentage, bool forcePrint)
+    namespace
     {
-        using namespace std::chrono_literals;
+        std::filesystem::path exeDirectory()
+        {
+#ifdef _WIN32
+            wchar_t buf[MAX_PATH];
+            const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+            if (n == 0)
+                return std::filesystem::current_path();
+            return std::filesystem::path(std::wstring(buf, n)).parent_path();
+#else
+            char buf[PATH_MAX];
+            const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf));
+            if (n <= 0)
+                return std::filesystem::current_path();
+            return std::filesystem::path(std::string(buf, static_cast<std::size_t>(n))).parent_path();
+#endif
+        }
 
-        constexpr const char* PBSTR = "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||";
-        constexpr int PBWIDTH = 40;
+        struct ProgressFrame
+        {
+            std::string name;
+            double progress = 0.0;
+            std::size_t depth = 0;
+            clock::time_point startTime;
+        };
 
-        int val = static_cast<int>(percentage * 100);
-        if (val == _lastProgress && !forcePrint)
-            return;
+        std::mutex g_mutex;
+        std::ofstream g_logFile;
+        bool g_logOpened = false;
+        std::vector<ProgressFrame> g_stack;
+        bool g_barActive = false;
+        std::size_t g_barLen = 0;
+        std::atomic<long long> g_nextReportTicks{ 0 };
+        std::atomic<int> g_progressPct{ -1 };
 
-        auto now = clock::now();
-        if (percentage != 1.0 && now < _nextReport && !forcePrint)
-            return;
+        std::string indentFor(std::size_t depth)
+        {
+            return std::string(depth * 2, ' ');
+        }
 
-        _nextReport = now + 50ms;
+        void fileWrite(std::string_view line)
+        {
+            if (!g_logOpened)
+            {
+                g_logOpened = true;
+                try
+                {
+                    g_logFile.open(exeDirectory() / "x86Tester.log", std::ios::out | std::ios::trunc);
+                }
+                catch (...)
+                {
+                }
+            }
+            if (g_logFile.is_open())
+            {
+                g_logFile << line << '\n';
+                g_logFile.flush();
+            }
+        }
 
-        int lpad = static_cast<int>(percentage * PBWIDTH);
-        int rpad = PBWIDTH - lpad;
-        _lastProgress = val;
+        void eraseBar()
+        {
+            if (!g_barActive)
+                return;
+            fmt::print("\r{:{}}\r", "", g_barLen);
+            g_barActive = false;
+            g_barLen = 0;
+        }
 
-        int namepad = 20 - static_cast<int>(name.size());
+        void drawBar()
+        {
+            if (g_stack.empty())
+                return;
 
-        std::string line = fmt::format("{:25} {:3d}% [{:40}]", name, val, std::string_view(PBSTR, lpad));
-        const std::size_t pad = line.size() < _progressLineLen ? _progressLineLen - line.size() : 0;
+            constexpr const char* PBSTR = "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||";
+            constexpr int PBWIDTH = 40;
 
-        fmt::print("\r{}{:{}}", line, "", pad);
-        std::fflush(stdout);
+            const auto& frame = g_stack.back();
+            const int val = static_cast<int>(frame.progress * 100);
+            const int lpad = static_cast<int>(frame.progress * PBWIDTH);
 
-        _progressLineLen = line.size();
-    }
+            std::string line = fmt::format("{}{:25} {:3d}% [{:40}]", indentFor(frame.depth), frame.name, val,
+                std::string_view(PBSTR, static_cast<std::size_t>(lpad)));
+            const std::size_t pad = line.size() < g_barLen ? g_barLen - line.size() : 0;
+            fmt::print("\r{}{:{}}", line, "", pad);
+            std::fflush(stdout);
+
+            g_barLen = line.size();
+            g_barActive = true;
+        }
+
+        void logLine(std::string_view line)
+        {
+            eraseBar();
+            fmt::print("{}\n", line);
+            drawBar();
+            std::fflush(stdout);
+        }
+    } // namespace
 
     void updateProgress(size_t val, size_t max)
     {
-        _progress = static_cast<double>(val) / max;
-        _progressPct.store(max != 0 ? static_cast<int>(100 * val / max) : 0);
-        printProgress(_progressName, _progress, false);
+        g_progressPct.store(max != 0 ? static_cast<int>(100 * val / max) : 0, std::memory_order_relaxed);
+
+        const auto now = clock::now();
+        if (now.time_since_epoch().count() < g_nextReportTicks.load(std::memory_order_relaxed))
+            return;
+
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_stack.empty())
+            return;
+
+        using namespace std::chrono_literals;
+        g_nextReportTicks.store((now + 50ms).time_since_epoch().count(), std::memory_order_relaxed);
+        g_stack.back().progress = max != 0 ? static_cast<double>(val) / static_cast<double>(max) : 0.0;
+        drawBar();
     }
 
     void endProgress()
     {
-        _inProgress = false;
-        _progressPct.store(-1);
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_stack.empty())
+            return;
 
-        auto endTime = clock::now();
-        auto seconds = std::chrono::duration<double>(endTime - _startTime).count();
-        std::string line = fmt::format("{}, completed in {:.2f}s.", _progressName, seconds);
-        const std::size_t pad = line.size() < _progressLineLen ? _progressLineLen - line.size() : 0;
-        fmt::println("\r{}{:{}}", line, "", pad);
-        _progressLineLen = 0;
+        const ProgressFrame frame = g_stack.back();
+        g_stack.pop_back();
+        g_progressPct.store(
+            g_stack.empty() ? -1 : static_cast<int>(g_stack.back().progress * 100), std::memory_order_relaxed);
+
+        const auto seconds = std::chrono::duration<double>(clock::now() - frame.startTime).count();
+        const std::string line = fmt::format("{}{}, completed in {:.2f}s.", indentFor(frame.depth), frame.name, seconds);
+
+        logLine(line);
+        fileWrite(line);
     }
 
     namespace Detail
     {
         void println(const std::string_view msg)
         {
-            if (_inProgress)
-            {
-                size_t spaces = msg.size() < _progressLineLen ? _progressLineLen - msg.size() : 0;
-                fmt::println("\r{}{}", msg, std::string(spaces, ' '));
-                printProgress(_progressName, _progress, true);
-            }
-            else
-                fmt::println("{}", msg);
+            std::lock_guard<std::mutex> lock(g_mutex);
+            const std::size_t depth = g_stack.empty() ? 0 : g_stack.back().depth;
+            const std::string line = fmt::format("{}{}", indentFor(depth), msg);
+            logLine(line);
+            fileWrite(line);
         }
 
         void startProgress(const std::string_view msg)
         {
-            _progressName = std::string{ msg };
-            _inProgress = true;
-            _lastProgress = -1;
-            _progress = 0.0;
-            _progressPct.store(0);
-            _startTime = clock::now();
-            printProgress(_progressName, _progress, true);
+            std::lock_guard<std::mutex> lock(g_mutex);
+            const std::size_t depth = g_stack.size();
+
+            fileWrite(fmt::format("{}{}", indentFor(depth), msg));
+
+            eraseBar();
+
+            ProgressFrame frame;
+            frame.name = std::string{ msg };
+            frame.depth = depth;
+            frame.startTime = clock::now();
+            g_stack.push_back(std::move(frame));
+
+            g_progressPct.store(0, std::memory_order_relaxed);
+            drawBar();
         }
 
     } // namespace Detail
@@ -176,7 +269,7 @@ namespace x86Tester::Logging
                 if (!status.empty())
                     title += " | " + status;
 
-                const int pct = _progressPct.load();
+                const int pct = g_progressPct.load();
                 if (pct >= 0)
                     title += fmt::format(" {}%", pct);
 

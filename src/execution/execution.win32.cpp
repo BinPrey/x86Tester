@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fmt/format.h>
+#include <x86Tester/logging.hpp>
 #include <intrin.h>
 #include <span>
 #include <unordered_map>
@@ -293,7 +294,7 @@ namespace x86Tester::Execution
             }
             else
             {
-                fmt::print("Unexpected event\n");
+                Logging::println("Unexpected event");
                 break;
             }
         }
@@ -532,6 +533,12 @@ namespace x86Tester::Execution
         }
 
         ctx->contextFlags = computeContextFlags(mode, code);
+
+        if ((ctx->contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+        {
+            ctx->threadContext->ContextFlags = ctx->contextFlags;
+            SetXStateFeaturesMask(ctx->threadContext, ctx->xstateMask & ~static_cast<DWORD64>(3));
+        }
 
         return ctx;
     }
@@ -796,14 +803,14 @@ namespace x86Tester::Execution
 
         if (SetThreadContext(ctx->hThread, ctx->threadContext) == FALSE)
         {
-            fmt::print("SetThreadContext failed: {:X}\n", GetLastError());
+            Logging::println("SetThreadContext failed: {:X}", GetLastError());
             return false;
         }
 
         auto& dbgEvent = ctx->dbgEvent;
         if (!ContinueDebugEvent(dbgEvent.dwProcessId, dbgEvent.dwThreadId, DBG_CONTINUE))
         {
-            fmt::print("ContinueDebugEvent failed: {:X}\n", GetLastError());
+            Logging::println("ContinueDebugEvent failed: {:X}", GetLastError());
             return false;
         }
 
@@ -836,6 +843,13 @@ namespace x86Tester::Execution
         }
 
         return true;
+    }
+
+    void pinThread(Context* ctx, unsigned core)
+    {
+        if (ctx == nullptr || ctx->hThread == nullptr)
+            return;
+        SetThreadAffinityMask(ctx->hThread, static_cast<DWORD_PTR>(1) << core);
     }
 
     void cleanup(Context* ctx)

@@ -134,6 +134,63 @@ namespace x86Tester::tests
         ASSERT_NE(ctx.getExecutionStatus(), Execution::ExecutionStatus::Success);
     }
 
+    TEST(ExecutionTest, vmovdqa_ymm_preserves_256bits)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 4>{ 0xC5, 0xFD, 0x6F, 0xC8 };
+
+        auto ctx = Execution::ScopedContext(mode, instrBytes);
+        ASSERT_TRUE(ctx);
+
+        std::array<std::uint8_t, 32> ymm0Value{};
+        for (std::size_t i = 0; i < ymm0Value.size(); ++i)
+            ymm0Value[i] = static_cast<std::uint8_t>(0x10 + i);
+
+        std::array<std::uint8_t, 32> ymm1Preset{};
+        ymm1Preset.fill(0xCC);
+
+        ctx.setRegBytes(ZYDIS_REGISTER_YMM0, ymm0Value);
+        ctx.setRegBytes(ZYDIS_REGISTER_YMM1, ymm1Preset);
+
+        ASSERT_TRUE(ctx.execute());
+        if (ctx.getExecutionStatus() == Execution::ExecutionStatus::IllegalInstruction)
+            GTEST_SKIP() << "AVX not supported on this CPU";
+        ASSERT_EQ(ctx.getExecutionStatus(), Execution::ExecutionStatus::Success);
+
+        const auto ymm1Out = ctx.getRegBytes(ZYDIS_REGISTER_YMM1);
+        ASSERT_EQ(ymm1Out.size(), 32u);
+        ASSERT_TRUE(std::ranges::equal(ymm1Out, ymm0Value)) << "vmovdqa must copy all 256 bits including the upper 128";
+
+        const auto ymm0Out = ctx.getRegBytes(ZYDIS_REGISTER_YMM0);
+        ASSERT_EQ(ymm0Out.size(), 32u);
+        ASSERT_TRUE(std::ranges::equal(ymm0Out, ymm0Value)) << "ymm0 upper 128 must round-trip on a fresh context";
+    }
+
+    TEST(ExecutionTest, vfmadd231ps_all_ones_yields_all_ones)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 5>{ 0xC4, 0x42, 0x2D, 0xB8, 0xE8 };
+
+        auto ctx = Execution::ScopedContext(mode, instrBytes);
+        ASSERT_TRUE(ctx);
+
+        std::array<std::uint8_t, 32> allOnes{};
+        allOnes.fill(0xFF);
+
+        ctx.setRegBytes(ZYDIS_REGISTER_YMM8, allOnes);
+        ctx.setRegBytes(ZYDIS_REGISTER_YMM10, allOnes);
+        ctx.setRegBytes(ZYDIS_REGISTER_YMM13, allOnes);
+
+        ASSERT_TRUE(ctx.execute());
+        if (ctx.getExecutionStatus() == Execution::ExecutionStatus::IllegalInstruction)
+            GTEST_SKIP() << "FMA not supported on this CPU";
+        ASSERT_EQ(ctx.getExecutionStatus(), Execution::ExecutionStatus::Success);
+
+        const auto ymm13Out = ctx.getRegBytes(ZYDIS_REGISTER_YMM13);
+        ASSERT_EQ(ymm13Out.size(), 32u);
+        ASSERT_TRUE(std::ranges::equal(ymm13Out, allOnes)) << "FMA of all-ones NaNs must stay all-ones in both 128-bit halves";
+    }
+
     TEST(GeneratorTest, movzx_eax_al_high_bits_zero)
     {
         const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
@@ -361,6 +418,37 @@ namespace x86Tester::tests
         // cli
         const auto cli = Generator::generateInstructionTestData(mode, std::array<std::uint8_t, 1>{ 0xFA });
         ASSERT_TRUE(cli.entries.empty());
+    }
+
+    TEST(GeneratorTest, vcvtdq2pd_folds_aliased_xmm_into_ymm)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 5>{ 0xC4, 0x41, 0x7E, 0xE6, 0xFF };
+
+        ZydisDisassembledInstruction dis{};
+        ASSERT_TRUE(ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, instrBytes.data(), instrBytes.size(), &dis)));
+
+        const auto reads = Generator::getReadRegisters(dis);
+
+        ASSERT_NE(std::ranges::find(reads, ZYDIS_REGISTER_YMM15), reads.end())
+            << "the aliased source must fold into the wider ymm15";
+        ASSERT_EQ(std::ranges::find(reads, ZYDIS_REGISTER_XMM15), reads.end())
+            << "the narrow xmm15 must not appear alongside its ymm15 alias";
+    }
+
+    TEST(GeneratorTest, pure_xmm_read_not_widened)
+    {
+        const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+        const auto instrBytes = std::array<std::uint8_t, 3>{ 0x0F, 0x58, 0xC1 };
+
+        ZydisDisassembledInstruction dis{};
+        ASSERT_TRUE(ZYAN_SUCCESS(ZydisDisassembleIntel(mode, 0, instrBytes.data(), instrBytes.size(), &dis)));
+
+        const auto reads = Generator::getReadRegisters(dis);
+        ASSERT_FALSE(reads.empty());
+        for (const auto reg : reads)
+            ASSERT_EQ(ZydisRegisterGetClass(reg), ZYDIS_REGCLASS_XMM)
+                << "a pure-xmm instruction must stay xmm, not widen to ymm/zmm";
     }
 
 } // namespace x86Tester::tests

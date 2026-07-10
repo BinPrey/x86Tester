@@ -76,6 +76,23 @@ namespace x86Tester::Generator
         return reg;
     }
 
+    inline ZydisRegister getEnclosingReg(ZydisMachineMode mode, ZydisRegister reg)
+    {
+        switch (ZydisRegisterGetClass(reg))
+        {
+            case ZYDIS_REGCLASS_GPR8:
+            case ZYDIS_REGCLASS_GPR16:
+            case ZYDIS_REGCLASS_GPR32:
+            case ZYDIS_REGCLASS_GPR64:
+            case ZYDIS_REGCLASS_FLAGS:
+            case ZYDIS_REGCLASS_XMM:
+            case ZYDIS_REGCLASS_YMM:
+            case ZYDIS_REGCLASS_ZMM:
+                return ZydisRegisterGetLargestEnclosing(mode, reg);
+        }
+        return reg;
+    }
+
     inline sfl::static_vector<ZydisRegister, 7> getRegsRead(const ZydisDisassembledInstruction& instr)
     {
         sfl::small_flat_set<ZydisRegister, 7> regs;
@@ -125,7 +142,7 @@ namespace x86Tester::Generator
         // Some registers may overlap, we have to turn them into a single register with largest size encountered.
         for (const auto& reg : regs)
         {
-            const auto bigReg = getRootReg(instr.info.machine_mode, reg);
+            const auto bigReg = getEnclosingReg(instr.info.machine_mode, reg);
             auto newReg = remapReg(reg);
             if (auto it = regMap.find(bigReg); it != regMap.end())
             {

@@ -3,9 +3,12 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <random>
 #include <sfl/small_vector.hpp>
 #include <span>
+#include <utility>
+#include <vector>
 #include <xmmintrin.h>
 
 namespace x86Tester::Generator
@@ -433,10 +436,38 @@ namespace x86Tester::Generator
 
     } // namespace Detail
 
+    struct CpuidSweep
+    {
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> pairs;
+        std::size_t index = 0;
+
+        bool exhausted() const
+        {
+            return index >= pairs.size();
+        }
+        std::uint32_t leaf() const
+        {
+            return index < pairs.size() ? pairs[index].first : 0;
+        }
+        std::uint32_t subleaf() const
+        {
+            return index < pairs.size() ? pairs[index].second : 0;
+        }
+        void advance()
+        {
+            if (index < pairs.size())
+                ++index;
+        }
+    };
+
     class InputGenerator
     {
-        sfl::small_vector<uint8_t, 8> _data{};
+        mutable sfl::small_vector<uint8_t, 8> _data{};
         std::mt19937_64& _prng;
+
+        CpuidSweep* _cpuid = nullptr;
+        int _cpuidField = 0;
+        bool _cpuidPrimary = false;
 
         enum class Strategy
         {
@@ -467,6 +498,16 @@ namespace x86Tester::Generator
             advance();
         }
 
+        InputGenerator(CpuidSweep* sweep, int field, bool primary, std::mt19937_64& prng)
+            : _prng(prng)
+            , _cpuid(sweep)
+            , _cpuidField(field)
+            , _cpuidPrimary(primary)
+        {
+            _maxBits = 32;
+            _data.resize(4);
+        }
+
         void reset()
         {
             _strategy = Strategy::reset;
@@ -477,11 +518,23 @@ namespace x86Tester::Generator
 
         std::span<const uint8_t> current() const
         {
+            if (_cpuid != nullptr)
+            {
+                const std::uint32_t v = _cpuidField == 0 ? _cpuid->leaf() : _cpuid->subleaf();
+                std::memcpy(_data.data(), &v, sizeof(v));
+            }
             return _data;
         }
 
         bool advance()
         {
+            if (_cpuid != nullptr)
+            {
+                if (_cpuidPrimary)
+                    _cpuid->advance();
+                return false;
+            }
+
             switch (_strategy)
             {
                 case Strategy::reset:

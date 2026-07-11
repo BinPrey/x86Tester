@@ -206,43 +206,45 @@ static std::optional<std::size_t> generateInstrTests(
     std::size_t total)
 {
     const std::string mnemonicStr = ZydisMnemonicGetString(mnemonic);
-    Logging::startProgress("Building instruction combinations...");
+    const auto instrs = [&] {
+        Logging::ProgressReport _("Building instruction combinations...");
 
-    const auto instrs = Generator::buildInstructions(
-        mode, mnemonic, true, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
+        auto result = Generator::buildInstructions(
+            mode, mnemonic, true, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
+
+        if (result.entryOffsets.empty())
+            Logging::println("No instructions generated, unsupported by host or memory access.");
+        else
+            Logging::println("Total instructions: {}", result.entryOffsets.size());
+
+        return result;
+    }();
 
     const auto numInstrs = instrs.entryOffsets.size();
-    if (numInstrs == 0)
-        Logging::println("No instructions generated, unsupported by host or memory access.");
-    else
-        Logging::println("Total instructions: {}", numInstrs);
-
-    Logging::endProgress();
-
     if (numInstrs == 0)
     {
         return std::nullopt;
     }
 
-    Logging::startProgress("Generating tests...");
-
     std::vector<InstrTestGroup> testGroups;
     std::size_t totalIterations = 0;
 
-    auto allGroups = Generator::generateGroupedTestData(
-        mode, instrs, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
-
-    for (auto& testCase : allGroups)
     {
-        if (!testCase.entries.empty() && !testCase.illegalInstruction)
+        Logging::ProgressReport _("Generating tests...");
+
+        auto allGroups = Generator::generateGroupedTestData(
+            mode, instrs, [](auto curVal, auto maxVal) { Logging::updateProgress(curVal, maxVal); });
+
+        for (auto& testCase : allGroups)
         {
-            Logging::addTitleCases(testCase.entries.size());
-            totalIterations += testCase.totalAttempts;
-            testGroups.push_back(std::move(testCase));
+            if (!testCase.entries.empty() && !testCase.illegalInstruction)
+            {
+                Logging::addTitleCases(testCase.entries.size());
+                totalIterations += testCase.totalAttempts;
+                testGroups.push_back(std::move(testCase));
+            }
         }
     }
-
-    Logging::endProgress();
 
     if (Generator::stopRequested())
         return 0;
@@ -253,8 +255,7 @@ static std::optional<std::size_t> generateInstrTests(
         const auto instB = disassembleInstruction(mode, b.instrData, b.address);
         if (instA.info.operand_width != instB.info.operand_width)
             return instA.info.operand_width < instB.info.operand_width;
-        return std::lexicographical_compare(
-            a.instrData.begin(), a.instrData.end(), b.instrData.begin(), b.instrData.end());
+        return std::lexicographical_compare(a.instrData.begin(), a.instrData.end(), b.instrData.begin(), b.instrData.end());
     });
 
     // Group the test cases by instruction.
@@ -305,7 +306,7 @@ static std::vector<ZydisMnemonic> generateTests(
     std::size_t totalTests = 0;
     std::size_t skipped = 0;
 
-    Logging::startProgress("Generating tests...");
+    Logging::ProgressReport _generating("Generating tests...");
     for (std::size_t i = 0; i < finalList.size(); ++i)
     {
         const auto mnemonic = finalList[i];
@@ -322,20 +323,20 @@ static std::vector<ZydisMnemonic> generateTests(
             continue;
         }
 
-        Logging::startProgress("Generating test data for {}...", mnemonicStr);
-
-        const auto tests = generateInstrTests(mode, finalList[i], outputPath, force, i, finalList.size());
-        if (tests.has_value())
         {
-            generated.push_back(finalList[i]);
-            totalTests += *tests;
-        }
-        else
-        {
-            ++skipped;
-        }
+            Logging::ProgressReport _("Generating test data for {}...", mnemonicStr);
 
-        Logging::endProgress();
+            const auto tests = generateInstrTests(mode, finalList[i], outputPath, force, i, finalList.size());
+            if (tests.has_value())
+            {
+                generated.push_back(finalList[i]);
+                totalTests += *tests;
+            }
+            else
+            {
+                ++skipped;
+            }
+        }
 
         if (Generator::stopRequested())
         {
@@ -343,7 +344,6 @@ static std::vector<ZydisMnemonic> generateTests(
             break;
         }
     }
-    Logging::endProgress();
 
     const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count();
     Logging::println(
@@ -670,7 +670,7 @@ static bool validateTests(
     bool executionAborted = false;
     std::mutex failureReportMtx;
 
-    Logging::startProgress("Validating tests...");
+    Logging::ProgressReport _validating("Validating tests...");
 
     for (size_t i = 0; i < finalList.size(); ++i)
     {
@@ -702,32 +702,33 @@ static bool validateTests(
 
         std::vector<GroupReport> groupDetails;
 
-        Logging::startProgress("Validating test data for for {}", ZydisMnemonicGetString(mnemonic));
-        std::size_t n = 0;
-        parallelForEach(groups, [&](const auto& group) {
-            if (abort.load())
-                return;
+        {
+            Logging::ProgressReport _("Validating test data for for {}", ZydisMnemonicGetString(mnemonic));
+            std::size_t n = 0;
+            parallelForEach(groups, [&](const auto& group) {
+                if (abort.load())
+                    return;
 
-            entries += group.entries.size();
+                entries += group.entries.size();
 
-            const auto report = validateTestEntries(mode, group, 20, validateFull);
-            if (report.failed)
-            {
-                abort = true;
-                return;
-            }
+                const auto report = validateTestEntries(mode, group, 20, validateFull);
+                if (report.failed)
+                {
+                    abort = true;
+                    return;
+                }
 
-            failures += report.failureDetails.size();
+                failures += report.failureDetails.size();
 
-            if (!report.failureDetails.empty())
-            {
-                std::lock_guard lock(failureReportMtx);
-                groupDetails.push_back(std::move(report));
-            }
+                if (!report.failureDetails.empty())
+                {
+                    std::lock_guard lock(failureReportMtx);
+                    groupDetails.push_back(std::move(report));
+                }
 
-            Logging::updateProgress(++n, groups.size());
-        });
-        Logging::endProgress();
+                Logging::updateProgress(++n, groups.size());
+            });
+        }
 
         if (abort)
         {
@@ -765,8 +766,6 @@ static bool validateTests(
             "Validation done: {} entries checked, {} mismatched, {} files missing, {} files unreadable", totalEntries,
             totalFailures, filesMissing, filesUnreadable);
     }
-
-    Logging::endProgress();
 
     return totalFailures == 0 && filesUnreadable == 0 && !executionAborted;
 }
@@ -851,6 +850,8 @@ namespace x86Tester
     {
         setMaxThreads(options.maxThreads);
 
+        Logging::ProgressReport _run("x86Tester Run");
+
         const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
 
         const auto filter = buildFilter(options.mnemonicNames, options.isaNames, options.categoryNames, options.excludeNames);
@@ -884,4 +885,4 @@ namespace x86Tester
 
         return validationOk ? EXIT_SUCCESS : EXIT_FAILURE;
     }
-}
+} // namespace x86Tester

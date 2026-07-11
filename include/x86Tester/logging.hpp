@@ -2,6 +2,7 @@
 
 #include <fmt/format.h>
 #include <string_view>
+#include <utility>
 
 namespace x86Tester::Logging
 {
@@ -20,6 +21,25 @@ namespace x86Tester::Logging
 
     void updateProgress(size_t val, size_t max);
     void endProgress();
+
+    class ProgressReport
+    {
+    public:
+        template<typename... TArgs> explicit ProgressReport(const fmt::format_string<TArgs...> _Fmt, TArgs&&... args)
+        {
+            Detail::startProgress(fmt::format(_Fmt, std::forward<TArgs>(args)...));
+        }
+
+        ProgressReport(const ProgressReport&) = delete;
+        ProgressReport(ProgressReport&&) = delete;
+        ProgressReport& operator=(const ProgressReport&) = delete;
+        ProgressReport& operator=(ProgressReport&&) = delete;
+
+        ~ProgressReport()
+        {
+            endProgress();
+        }
+    };
 
     template<typename... TArgs> void println(const fmt::format_string<TArgs...> _Fmt, TArgs&&... args)
     {

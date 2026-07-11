@@ -1383,7 +1383,7 @@ namespace x86Tester::Generator
 
     std::vector<ZydisMnemonic> buildMnemonicIndex(ZydisMachineMode mode, const Filter& filter)
     {
-        Logging::startProgress("Building instruction combination index...");
+        Logging::ProgressReport _("Building instruction combination index...");
 
         std::bitset<ZYDIS_MNEMONIC_MAX_VALUE + 1> selected;
 
@@ -1430,8 +1430,6 @@ namespace x86Tester::Generator
                     return;
             }
         });
-
-        Logging::endProgress();
 
         std::vector<ZydisMnemonic> result;
         for (int m = ZYDIS_MNEMONIC_INVALID + 1; m <= ZYDIS_MNEMONIC_MAX_VALUE; ++m)

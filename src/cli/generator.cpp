@@ -535,7 +535,7 @@ static GroupReport validateTestEntries(
     GroupReport report{};
 
     const auto dis = disassembleInstruction(mode, group.instrData, group.address);
-    report.instructionText = std::format("{} [{}]", dis.text, Utils::hexEncode(group.instrData));
+    report.instructionText = fmt::format("{} [{}]", dis.text, Utils::hexEncode(group.instrData));
 
     std::uint32_t detFlagMask = 0;
     if (dis.info.cpu_flags != nullptr)

@@ -1498,6 +1498,9 @@ namespace x86Tester::Generator
     {
         std::uint32_t flags = 0;
         flags |= instr.info.cpu_flags->tested;
+        // In order to capture what undefined result it needs to force feeding them as inputs prior.
+        // It captures keep vs overwrite behavior, which is what the harness needs to know to set up the inputs correctly.
+        flags |= instr.info.cpu_flags->undefined;
 
         switch (instr.info.mnemonic)
         {

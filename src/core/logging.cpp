@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fmt/format.h>
 #include <fstream>
@@ -123,6 +124,38 @@ namespace x86Tester::Logging
             drawBar();
             std::fflush(stdout);
         }
+
+        bool colorEnabled()
+        {
+            static const bool enabled = []() {
+                if (const char* nc = std::getenv("NO_COLOR"); nc != nullptr && nc[0] != '\0')
+                    return false;
+#ifdef _WIN32
+                const HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+                if (h == INVALID_HANDLE_VALUE || h == nullptr)
+                    return false;
+                DWORD mode = 0;
+                if (!GetConsoleMode(h, &mode))
+                    return false;
+                SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+                return true;
+#else
+                return isatty(STDOUT_FILENO) != 0;
+#endif
+            }();
+            return enabled;
+        }
+
+        void logLineColored(std::string_view line, std::string_view color)
+        {
+            eraseBar();
+            if (colorEnabled())
+                fmt::print("{}{}\x1b[0m\n", color, line);
+            else
+                fmt::print("{}\n", line);
+            drawBar();
+            std::fflush(stdout);
+        }
     } // namespace
 
     void updateProgress(size_t val, size_t max)
@@ -169,6 +202,15 @@ namespace x86Tester::Logging
             const std::size_t depth = g_stack.empty() ? 0 : g_stack.back().depth;
             const std::string line = fmt::format("{}{}", indentFor(depth), msg);
             logLine(line);
+            fileWrite(line);
+        }
+
+        void error(const std::string_view msg)
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            const std::size_t depth = g_stack.empty() ? 0 : g_stack.back().depth;
+            const std::string line = fmt::format("{}{}", indentFor(depth), msg);
+            logLineColored(line, "\x1b[31m");
             fileWrite(line);
         }
 

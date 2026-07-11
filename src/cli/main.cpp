@@ -6,6 +6,10 @@
 #include <string_view>
 #include <tuple>
 
+#ifndef X86TESTER_VERSION
+#define X86TESTER_VERSION "unknown"
+#endif
+
 namespace
 {
     using x86Tester::Cli::Option;
@@ -25,6 +29,7 @@ namespace
         Option<bool>{ "--validate-full", "", "", Section::Options, false, "Validates every case, default validation does only 3 tests per group" },
         Option<bool>{ "--skip-validation", "", "", Section::Options, false, "Skip validation of generated test data (for speed)" },
         Option<bool>{ "--sandbox", "", "", Section::Options, true, "" },
+        Option<bool>{ "--version", "-V", "", Section::Options, false, "Show version and exit" },
         Option<bool>{ "--help", "-h", "", Section::Options, false, "Show this help" }
     );
     // clang-format on
@@ -75,7 +80,13 @@ int main(int argc, char** argv)
     }
 
     auto& [isa, category, exclude, out, threads, force, list, stopImpossible, validateOnly, validateFull,
-           skipValidation, sandbox, help] = result.values;
+           skipValidation, sandbox, version, help] = result.values;
+
+    if (version)
+    {
+        fmt::print("x86Tester {}\n", X86TESTER_VERSION);
+        return EXIT_SUCCESS;
+    }
 
     if (help)
     {

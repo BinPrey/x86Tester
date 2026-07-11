@@ -1,6 +1,13 @@
 name: build
 
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore:
+      - "release/**"
+  pull_request:
+
+env:
+  ZIG_VERSION: "0.14.1"
 
 jobs:
   windows:
@@ -11,13 +18,62 @@ jobs:
         run: cmake -S . -B build -A x64
       - name: Build
         run: cmake --build build --config Release
-  linux:
+      - name: Run tester
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
+          & $exe.FullName --out ci-out cdq clc inc mul div idiv add shld
+
+  linux-musl:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install zig
+        run: |
+          curl -sL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" -o zig.tar.xz
+          mkdir zig && tar -xf zig.tar.xz -C zig --strip-components=1
+          echo "ZIG=$PWD/zig/zig" >> "$GITHUB_ENV"
+      - name: Build (static musl)
+        run: bash scripts/build-linux-musl.sh
+      - name: Verify fully static
+        run: |
+          BIN=build-musl/x86Tester-cli
+          file "$BIN"
+          if ldd "$BIN" 2>&1 | grep -qv "not a dynamic executable"; then
+            echo "binary is not fully static" >&2
+            ldd "$BIN"
+            exit 1
+          fi
+          if objdump -T "$BIN" 2>/dev/null | grep -qE "GLIBC_|GLIBCXX_|CXXABI_"; then
+            echo "binary references versioned libc/libstdc++ symbols" >&2
+            exit 1
+          fi
+      - name: Stage artifact
+        run: |
+          cp build-musl/x86Tester-cli x86Tester-cli-linux-x86_64
+          strip x86Tester-cli-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x86Tester-cli-linux-x86_64
+          path: x86Tester-cli-linux-x86_64
+      - name: Run tester
+        run: build-musl/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld
+
+  linux-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-14 g++-14 ninja-build
+        run: sudo apt-get update && sudo apt-get install -y g++ ninja-build
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build
+      - name: Run tester
+        run: build/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld

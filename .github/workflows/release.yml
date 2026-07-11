@@ -1,0 +1,107 @@
+name: release
+
+on:
+  push:
+    branches:
+      - "release/**"
+
+env:
+  ZIG_VERSION: "0.14.1"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: echo "version=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DX86TESTER_VERSION="${{ needs.version.outputs.version }}"
+      - name: Build
+        run: cmake --build build --config Release --target x86Tester-cli
+      - name: Run tester
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
+          & $exe.FullName --out ci-out cdq clc inc mul div idiv add shld
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
+          Copy-Item $exe.FullName x86Tester-cli-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: x86Tester-cli-windows-x86_64.exe
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install zig
+        run: |
+          curl -sL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" -o zig.tar.xz
+          mkdir zig && tar -xf zig.tar.xz -C zig --strip-components=1
+          echo "ZIG=$PWD/zig/zig" >> "$GITHUB_ENV"
+      - name: Build (static musl)
+        env:
+          X86TESTER_VERSION: ${{ needs.version.outputs.version }}
+        run: bash scripts/build-linux-musl.sh
+      - name: Run tester
+        run: build-musl/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld
+      - name: Verify fully static
+        run: |
+          BIN=build-musl/x86Tester-cli
+          file "$BIN"
+          if ldd "$BIN" 2>&1 | grep -qv "not a dynamic executable"; then
+            echo "binary is not fully static" >&2
+            ldd "$BIN"
+            exit 1
+          fi
+      - name: Stage artifact
+        run: |
+          cp build-musl/x86Tester-cli x86Tester-cli-linux-x86_64
+          strip x86Tester-cli-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: x86Tester-cli-linux-x86_64
+
+  publish:
+    needs: [version, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+          else
+            gh release create "$VERSION" dist/* \
+              --title "x86Tester $VERSION" \
+              --target "$GITHUB_SHA" \
+              --notes "Automated release from ${GITHUB_REF_NAME}."
+          fi

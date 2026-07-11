@@ -659,7 +659,7 @@ static GroupReport validateTestEntries(
     return report;
 }
 
-static void validateTests(
+static bool validateTests(
     const std::vector<ZydisMnemonic>& finalList, const ZydisMachineMode mode, const std::filesystem::path& outputPath,
     bool validateFull)
 {
@@ -667,6 +667,7 @@ static void validateTests(
     std::size_t totalFailures = 0;
     std::size_t filesMissing = 0;
     std::size_t filesUnreadable = 0;
+    bool executionAborted = false;
     std::mutex failureReportMtx;
 
     Logging::startProgress("Validating tests...");
@@ -690,7 +691,7 @@ static void validateTests(
         std::deque<std::vector<std::uint8_t>> instrStore;
         if (!deserializeTestEntries(filePath, groups, instrStore))
         {
-            Logging::println("Failed to deserialize test data for mnemonic: {}", ZydisMnemonicGetString(mnemonic));
+            Logging::error("Failed to deserialize test data for mnemonic: {}", ZydisMnemonicGetString(mnemonic));
             ++filesUnreadable;
             continue;
         }
@@ -730,7 +731,8 @@ static void validateTests(
 
         if (abort)
         {
-            Logging::println("Aborted validation due to execution failure");
+            Logging::error("Aborted validation due to execution failure");
+            executionAborted = true;
             break;
         }
 
@@ -741,21 +743,32 @@ static void validateTests(
         {
             for (const auto& detail : groupDetails)
             {
-                Logging::println("  Failures for {}", detail.instructionText);
+                Logging::error("  Failures for {}", detail.instructionText);
                 for (const auto& reason : detail.failureDetails)
                 {
-                    Logging::println("    {}", reason);
+                    Logging::error("    {}", reason);
                 }
             }
-            Logging::println("[FAIL] {}: {}/{} entries mismatched", ZydisMnemonicGetString(mnemonic), failures, entries);
+            Logging::error("[FAIL] {}: {}/{} entries mismatched", ZydisMnemonicGetString(mnemonic), failures, entries);
         }
     }
 
-    Logging::println(
-        "Validation done: {} entries checked, {} mismatched, {} files missing, {} files unreadable", totalEntries,
-        totalFailures, filesMissing, filesUnreadable);
+    if (totalFailures != 0 || filesUnreadable != 0)
+    {
+        Logging::error(
+            "Validation done: {} entries checked, {} mismatched, {} files missing, {} files unreadable", totalEntries,
+            totalFailures, filesMissing, filesUnreadable);
+    }
+    else
+    {
+        Logging::println(
+            "Validation done: {} entries checked, {} mismatched, {} files missing, {} files unreadable", totalEntries,
+            totalFailures, filesMissing, filesUnreadable);
+    }
 
     Logging::endProgress();
+
+    return totalFailures == 0 && filesUnreadable == 0 && !executionAborted;
 }
 
 static std::optional<Filter> buildFilter(
@@ -863,11 +876,12 @@ namespace x86Tester
 
         const auto generated = options.validateOnly ? finalList : generateTests(finalList, mode, outputPath, options.force);
 
+        bool validationOk = true;
         if (!options.skipValidation)
-            validateTests(finalList, mode, outputPath, options.validateFull);
+            validationOk = validateTests(finalList, mode, outputPath, options.validateFull);
 
         Logging::stopTitleMonitor();
 
-        return EXIT_SUCCESS;
+        return validationOk ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 }

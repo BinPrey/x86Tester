@@ -106,13 +106,13 @@ namespace x86Tester::Generator
         IntegerOverflow,
     };
 
-    using RegTestData = sfl::small_vector<std::uint8_t, 8>;
+    using RegTestData = std::vector<std::uint8_t>;
 
     struct TestCaseEntry
     {
         sfl::small_flat_map<ZydisRegister, RegTestData, 2> inputRegs;
-        std::optional<std::uint32_t> inputFlags;
         sfl::small_flat_map<ZydisRegister, RegTestData, 2> outputRegs;
+        std::optional<std::uint32_t> inputFlags;
         std::optional<std::uint32_t> outputFlags;
         std::optional<ExceptionType> exceptionType;
 

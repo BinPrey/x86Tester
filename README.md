@@ -55,6 +55,18 @@ hf auth login
 hf upload BinPrey/x86-instruction-test-vectors data/Intel_R_Core_TM_i7_8700K_CPU_3_70GHz_f6m158s10.parquet data/Intel_R_Core_TM_i7_8700K_CPU_3_70GHz_f6m158s10.parquet --repo-type dataset --create-pr
 ```
 
+Finally, add the processor to the dataset index so it appears as its own subset in
+the viewer. The dataset's `README.md` carries a `configs:` block in its YAML front
+matter with one entry per CPU; add yours in the same pull request, pointing at the
+file you uploaded:
+
+```yaml
+- config_name: Intel_R_Core_TM_i7_8700K_CPU_3_70GHz_f6m158s10
+  data_files:
+  - split: train
+    path: data/Intel_R_Core_TM_i7_8700K_CPU_3_70GHz_f6m158s10.parquet
+```
+
 ## Building
 
 The build is driven by cmkr: edit `cmake.toml`, and `CMakeLists.txt` is generated

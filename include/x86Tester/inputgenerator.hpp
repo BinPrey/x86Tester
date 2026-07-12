@@ -413,6 +413,19 @@ namespace x86Tester::Generator
             res.push_back(std::vector<std::uint8_t>(10, 0xFF));
             res.push_back(std::vector<std::uint8_t>(10, 0x00));
 
+            const auto raw80 = [](std::uint64_t mant, std::uint16_t hi) {
+                std::vector<std::uint8_t> b(10);
+                std::memcpy(b.data(), &mant, 8);
+                std::memcpy(b.data() + 8, &hi, 2);
+                return b;
+            };
+            res.push_back(raw80(0x8000000000000000ull, 0x7FFF));
+            res.push_back(raw80(0x8000000000000000ull, 0xFFFF));
+            res.push_back(raw80(0x8000000000000001ull, 0x7FFF));
+            res.push_back(raw80(0x8000000000000001ull, 0xFFFF));
+            res.push_back(raw80(0xFFFFFFFFFFFFFFFFull, 0x7FFE));
+            res.push_back(raw80(0xFFFFFFFFFFFFFFFFull, 0xFFFE));
+
             std::sort(res.begin(), res.end());
             res.erase(std::unique(res.begin(), res.end()), res.end());
             return res;
@@ -433,6 +446,22 @@ namespace x86Tester::Generator
         static const auto kMagicNumbers512b = generateVecNumbers(64);
 
         static const auto kMagicNumbers80b = generateExtended80();
+
+        static std::vector<std::vector<std::uint8_t>> generateX87ControlWords()
+        {
+            std::vector<std::vector<std::uint8_t>> res;
+            const auto push = [&](std::uint16_t cw) {
+                std::vector<std::uint8_t> b(2);
+                std::memcpy(b.data(), &cw, 2);
+                res.push_back(std::move(b));
+            };
+            for (const std::uint16_t pc : { std::uint16_t{ 0 }, std::uint16_t{ 2 }, std::uint16_t{ 3 } })
+                for (std::uint16_t rc = 0; rc < 4; ++rc)
+                    push(static_cast<std::uint16_t>(0x007F | (pc << 8) | (rc << 10)));
+            return res;
+        }
+
+        static const auto kX87ControlWords = generateX87ControlWords();
 
     } // namespace Detail
 
@@ -468,6 +497,9 @@ namespace x86Tester::Generator
         CpuidSweep* _cpuid = nullptr;
         int _cpuidField = 0;
         bool _cpuidPrimary = false;
+
+        const std::vector<std::vector<std::uint8_t>>* _fixedValues = nullptr;
+        std::size_t _fixedIndex = 0;
 
         enum class Strategy
         {
@@ -508,6 +540,19 @@ namespace x86Tester::Generator
             _data.resize(4);
         }
 
+        InputGenerator(const std::vector<std::vector<std::uint8_t>>* values, std::mt19937_64& prng)
+            : _prng(prng)
+            , _fixedValues(values)
+        {
+            _maxBits = values->empty() ? 0 : values->front().size() * 8;
+            _data.resize((_maxBits + 7) / 8);
+        }
+
+        bool isFixed() const
+        {
+            return _fixedValues != nullptr;
+        }
+
         void reset()
         {
             _strategy = Strategy::reset;
@@ -523,6 +568,11 @@ namespace x86Tester::Generator
                 const std::uint32_t v = _cpuidField == 0 ? _cpuid->leaf() : _cpuid->subleaf();
                 std::memcpy(_data.data(), &v, sizeof(v));
             }
+            else if (_fixedValues != nullptr && !_fixedValues->empty())
+            {
+                const auto& v = (*_fixedValues)[_fixedIndex % _fixedValues->size()];
+                return std::span<const uint8_t>(v.data(), v.size());
+            }
             return _data;
         }
 
@@ -533,6 +583,12 @@ namespace x86Tester::Generator
                 if (_cpuidPrimary)
                     _cpuid->advance();
                 return false;
+            }
+
+            if (_fixedValues != nullptr)
+            {
+                ++_fixedIndex;
+                return _fixedIndex < _fixedValues->size();
             }
 
             switch (_strategy)

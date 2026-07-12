@@ -1593,9 +1593,10 @@ namespace x86Tester::Generator
             // the random per-operand sweep almost never lands every input on the same extreme at
             // once, which is what result-is-zero (e.g. ZF after OR) or result-is-all-ones (e.g.
             // PEXT with an all-ones mask) outputs require.
-            if (iteration == 0)
+            const bool isControlWord = reg == ZYDIS_REGISTER_X87CONTROL;
+            if (!isControlWord && iteration == 0)
                 std::memset(regBuf + regOffset, 0x00, usedRegByteSize);
-            else if (iteration == 1)
+            else if (!isControlWord && iteration == 1)
                 std::memset(regBuf + regOffset, 0xFF, usedRegByteSize);
             else
                 std::memcpy(regBuf + regOffset, inputData.data(), usedRegByteSize);
@@ -1617,11 +1618,18 @@ namespace x86Tester::Generator
 
         for (size_t inputIdx = 0; inputIdx < regIndex; ++inputIdx)
         {
+            if (inputGens[inputIdx].isFixed())
+                continue;
             if (inputGens[inputIdx].advance())
             {
                 if ((iteration + 1) % 3 == 0)
                     break;
             }
+        }
+        for (size_t inputIdx = 0; inputIdx < regIndex; ++inputIdx)
+        {
+            if (inputGens[inputIdx].isFixed())
+                inputGens[inputIdx].advance();
         }
 
         // Randomize read flags.
@@ -1868,6 +1876,12 @@ namespace x86Tester::Generator
             if (isRegFiltered(reg))
                 continue;
 
+            if (reg == ZYDIS_REGISTER_X87CONTROL)
+            {
+                generators.emplace_back(&Detail::kX87ControlWords, prng);
+                continue;
+            }
+
             if (cpuidSweep != nullptr)
             {
                 const auto root = getRootReg(instr.info.machine_mode, reg);
@@ -1984,13 +1998,16 @@ namespace x86Tester::Generator
             return ExceptionType::None;
         };
 
+        const bool x87Sweep = x87ReadsRoundingControl(instr.info.mnemonic);
+
         std::vector<bool> satisfied(testMatrix.size(), false);
         std::size_t satisfiedCount = 0;
 
         std::size_t iteration = 0;
         bool illegalInstr = false;
 
-        while (satisfiedCount < testMatrix.size() && iteration <= maxAttempts && !illegalInstr)
+        while ((satisfiedCount < testMatrix.size() || (x87Sweep && iteration < Detail::kX87ControlWords.size()))
+            && iteration <= maxAttempts && !illegalInstr)
         {
             TestCaseEntry input{};
             advanceInputs(ctx, prng, inputGenerators, instr, input, iteration);
@@ -2015,7 +2032,16 @@ namespace x86Tester::Generator
                 break;
             }
             if (statusA == Execution::ExecutionStatus::Success)
+            {
                 captureOutputs(ctx, instr, outA);
+                if (x87Sweep)
+                {
+                    TestCaseEntry entry = input;
+                    entry.outputRegs = outA.outputRegs;
+                    entry.outputFlags = outA.outputFlags;
+                    testCase.entries.push_back(std::move(entry));
+                }
+            }
 
             auto statusB = statusA;
             if (needTwoRuns)
@@ -2065,6 +2091,26 @@ namespace x86Tester::Generator
 
                 if (statusA != Execution::ExecutionStatus::Success || statusB != Execution::ExecutionStatus::Success)
                     continue;
+
+                if (tb.mask != 0)
+                {
+                    const auto bigReg = getRootReg(mode, tb.reg);
+                    const auto itA = outA.outputRegs.find(bigReg);
+                    if (itA == outA.outputRegs.end())
+                        continue;
+                    std::uint32_t val = 0;
+                    std::memcpy(&val, itA->second.data(), std::min<std::size_t>(sizeof(val), itA->second.size()));
+                    if ((val & tb.mask) == tb.expectedValue)
+                    {
+                        TestCaseEntry entry = input;
+                        entry.outputRegs = outA.outputRegs;
+                        entry.outputFlags = outA.outputFlags;
+                        testCase.entries.push_back(std::move(entry));
+                        satisfied[t] = true;
+                        satisfiedCount++;
+                    }
+                    continue;
+                }
 
                 if (tb.reg == ZYDIS_REGISTER_FLAGS)
                 {
@@ -2148,6 +2194,19 @@ namespace x86Tester::Generator
         if (entry.exceptionType)
         {
             facts.push_back(0xE000000000000000ull | static_cast<std::uint64_t>(*entry.exceptionType));
+        }
+        if (const auto it = entry.inputRegs.find(ZYDIS_REGISTER_X87CONTROL); it != entry.inputRegs.end())
+        {
+            std::uint16_t cw = 0;
+            std::memcpy(&cw, it->second.data(), std::min<std::size_t>(2, it->second.size()));
+            facts.push_back(0xC000000000000000ull | cw);
+        }
+        if (const auto it = entry.outputRegs.find(ZYDIS_REGISTER_X87STATUS); it != entry.outputRegs.end())
+        {
+            std::uint16_t sw = 0;
+            std::memcpy(&sw, it->second.data(), std::min<std::size_t>(2, it->second.size()));
+            const std::uint16_t cc = sw & ((1u << 8) | (1u << 10) | (1u << 14));
+            facts.push_back(0xD000000000000000ull | cc);
         }
     }
 

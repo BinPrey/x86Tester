@@ -18,6 +18,8 @@ namespace x86Tester::Generator
         ZydisRegister reg;
         std::uint16_t bitPos;
         std::uint8_t expectedBitValue;
+        std::uint32_t mask = 0;
+        std::uint32_t expectedValue = 0;
     };
 
     inline bool isRegFiltered(ZydisRegister reg)
@@ -31,6 +33,61 @@ namespace x86Tester::Generator
             case ZYDIS_REGISTER_EFLAGS:
             case ZYDIS_REGISTER_RFLAGS:
             case ZYDIS_REGISTER_PKRU:
+                return true;
+        }
+        return false;
+    }
+
+    inline bool x87ReadsRoundingControl(ZydisMnemonic m)
+    {
+        switch (m)
+        {
+            case ZYDIS_MNEMONIC_FADD:
+            case ZYDIS_MNEMONIC_FADDP:
+            case ZYDIS_MNEMONIC_FIADD:
+            case ZYDIS_MNEMONIC_FSUB:
+            case ZYDIS_MNEMONIC_FSUBP:
+            case ZYDIS_MNEMONIC_FISUB:
+            case ZYDIS_MNEMONIC_FSUBR:
+            case ZYDIS_MNEMONIC_FSUBRP:
+            case ZYDIS_MNEMONIC_FISUBR:
+            case ZYDIS_MNEMONIC_FMUL:
+            case ZYDIS_MNEMONIC_FMULP:
+            case ZYDIS_MNEMONIC_FIMUL:
+            case ZYDIS_MNEMONIC_FDIV:
+            case ZYDIS_MNEMONIC_FDIVP:
+            case ZYDIS_MNEMONIC_FIDIV:
+            case ZYDIS_MNEMONIC_FDIVR:
+            case ZYDIS_MNEMONIC_FDIVRP:
+            case ZYDIS_MNEMONIC_FIDIVR:
+            case ZYDIS_MNEMONIC_FSQRT:
+            case ZYDIS_MNEMONIC_FRNDINT:
+            case ZYDIS_MNEMONIC_FSCALE:
+            case ZYDIS_MNEMONIC_FST:
+            case ZYDIS_MNEMONIC_FSTP:
+            case ZYDIS_MNEMONIC_FIST:
+            case ZYDIS_MNEMONIC_FISTP:
+            case ZYDIS_MNEMONIC_FSIN:
+            case ZYDIS_MNEMONIC_FCOS:
+            case ZYDIS_MNEMONIC_FSINCOS:
+            case ZYDIS_MNEMONIC_FPTAN:
+            case ZYDIS_MNEMONIC_FPATAN:
+            case ZYDIS_MNEMONIC_F2XM1:
+            case ZYDIS_MNEMONIC_FYL2X:
+            case ZYDIS_MNEMONIC_FYL2XP1:
+                return true;
+        }
+        return false;
+    }
+
+    inline bool x87WritesControl(ZydisMnemonic m)
+    {
+        switch (m)
+        {
+            case ZYDIS_MNEMONIC_FLDCW:
+            case ZYDIS_MNEMONIC_FNINIT:
+            case ZYDIS_MNEMONIC_FLDENV:
+            case ZYDIS_MNEMONIC_FRSTOR:
                 return true;
         }
         return false;
@@ -57,6 +114,8 @@ namespace x86Tester::Generator
                     regs.insert(op.reg.value);
             }
         }
+        if (x87WritesControl(instr.info.mnemonic))
+            regs.insert(ZYDIS_REGISTER_X87CONTROL);
         return sortRegs(regs);
     }
 
@@ -125,6 +184,9 @@ namespace x86Tester::Generator
                 }
             }
         }
+
+        if (x87ReadsRoundingControl(instr.info.mnemonic))
+            regs.insert(ZYDIS_REGISTER_X87CONTROL);
 
         const auto remapReg = [](auto& oldReg) {
             if (oldReg == ZYDIS_REGISTER_AH)

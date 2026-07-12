@@ -350,9 +350,9 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_FICOM:
             case ZYDIS_MNEMONIC_FICOMP:
                 zeroMask |= C1;
-                untestMask = 0;
                 break;
             case ZYDIS_MNEMONIC_FXAM:
+                break;
             case ZYDIS_MNEMONIC_FPREM:
             case ZYDIS_MNEMONIC_FPREM1:
                 untestMask = 0;
@@ -1297,6 +1297,9 @@ namespace x86Tester::Generator
             if (alwaysFaults)
                 break;
 
+            if (regModified == ZYDIS_REGISTER_X87CONTROL)
+                continue;
+
             const auto regSize = ZydisRegisterGetWidth(instr.info.machine_mode, regModified);
             const auto knownReg = computeKnownReg(instr, regSize);
 
@@ -1737,6 +1740,38 @@ namespace x86Tester::Generator
             if ((flagsSet1 & flag) != 0)
             {
                 matrix.push_back({ ExceptionType::None, ZYDIS_REGISTER_FLAGS, static_cast<std::uint16_t>(i), 1 });
+            }
+        }
+
+        {
+            const std::uint32_t C0 = 1u << 8, C2 = 1u << 10, C3 = 1u << 14;
+            const std::uint32_t ccMask = C0 | C2 | C3;
+            const auto addState = [&](std::uint32_t v) {
+                matrix.push_back({ ExceptionType::None, ZYDIS_REGISTER_X87STATUS, 0, 0, ccMask, v });
+            };
+            switch (instr.info.mnemonic)
+            {
+                case ZYDIS_MNEMONIC_FCOM:
+                case ZYDIS_MNEMONIC_FCOMP:
+                case ZYDIS_MNEMONIC_FCOMPP:
+                case ZYDIS_MNEMONIC_FUCOM:
+                case ZYDIS_MNEMONIC_FUCOMP:
+                case ZYDIS_MNEMONIC_FUCOMPP:
+                case ZYDIS_MNEMONIC_FTST:
+                case ZYDIS_MNEMONIC_FICOM:
+                case ZYDIS_MNEMONIC_FICOMP:
+                    addState(0);
+                    addState(C0);
+                    addState(C3);
+                    addState(C0 | C2 | C3);
+                    break;
+                case ZYDIS_MNEMONIC_FXAM:
+                    addState(C0);
+                    addState(C2);
+                    addState(C2 | C0);
+                    addState(C3);
+                    addState(C3 | C2);
+                    break;
             }
         }
 

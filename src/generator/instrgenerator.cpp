@@ -869,6 +869,7 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_RDSEED:
             case ZYDIS_MNEMONIC_RDTSC:
             case ZYDIS_MNEMONIC_RDTSCP:
+            case ZYDIS_MNEMONIC_RDPID:
                 return false;
 
             // x87 instructions that push or pop the FPU stack change TOP, which breaks the

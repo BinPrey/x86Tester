@@ -190,6 +190,7 @@ static bool serializeTestEntries(
         }
     }
 
+    fmt::print(file, "cpu:\n{}\n", outputPath.filename().string());
     fmt::print(file, "data:{}\n", dataPool.size());
     for (const auto& hex : dataPool)
     {
@@ -397,6 +398,9 @@ static bool deserializeTestEntries(
     };
 
     std::size_t cursor = 0;
+    if (cursor < lines.size() && lines[cursor].rfind("cpu:", 0) == 0)
+        cursor += 2;
+
     if (cursor >= lines.size() || lines[cursor].rfind("data:", 0) != 0)
         return false;
 

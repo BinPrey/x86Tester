@@ -1061,7 +1061,8 @@ namespace x86Tester::Generator
                     laneLowZeroBits = std::min<unsigned>(static_cast<unsigned>(ops[2].imm.value.u), w);
                 }
                 else if (ops[1].type == ZYDIS_OPERAND_TYPE_REGISTER && ops[2].type == ZYDIS_OPERAND_TYPE_REGISTER
-                    && ops[1].reg.value == ops[2].reg.value)
+                    && getEnclosingReg(instr.info.machine_mode, ops[1].reg.value)
+                        == getEnclosingReg(instr.info.machine_mode, ops[2].reg.value))
                 {
                     shiftSelfLaneWidth = w;
                     shiftSelfShl = true;
@@ -1082,7 +1083,8 @@ namespace x86Tester::Generator
                     laneKeepBits = w - std::min<unsigned>(static_cast<unsigned>(ops[2].imm.value.u), w);
                 }
                 else if (ops[1].type == ZYDIS_OPERAND_TYPE_REGISTER && ops[2].type == ZYDIS_OPERAND_TYPE_REGISTER
-                    && ops[1].reg.value == ops[2].reg.value)
+                    && getEnclosingReg(instr.info.machine_mode, ops[1].reg.value)
+                        == getEnclosingReg(instr.info.machine_mode, ops[2].reg.value))
                 {
                     shiftSelfLaneWidth = w;
                 }
@@ -1091,7 +1093,8 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_VPSRAW:
             case ZYDIS_MNEMONIC_VPSRAD:
                 if (ops[1].type == ZYDIS_OPERAND_TYPE_REGISTER && ops[2].type == ZYDIS_OPERAND_TYPE_REGISTER
-                    && ops[1].reg.value == ops[2].reg.value)
+                    && getEnclosingReg(instr.info.machine_mode, ops[1].reg.value)
+                        == getEnclosingReg(instr.info.machine_mode, ops[2].reg.value))
                     shiftSelfLaneWidth = instr.info.mnemonic == ZYDIS_MNEMONIC_VPSRAW ? 16 : 32;
                 break;
             // PMOVZX zero-extends each source element into a wider lane; the bits above the
@@ -1343,6 +1346,17 @@ namespace x86Tester::Generator
                 case ZYDIS_MNEMONIC_VMOVD:
                     // Writing an XMM destination zero-extends to 128 bits (low 32 hold the value).
                     maxBits = 32;
+                    break;
+                case ZYDIS_MNEMONIC_EXTRQ:
+                    if (ops[1].type == ZYDIS_OPERAND_TYPE_IMMEDIATE && ops[2].type == ZYDIS_OPERAND_TYPE_IMMEDIATE)
+                    {
+                        const unsigned length = (ops[1].imm.value.u & 0x3F) != 0 ? static_cast<unsigned>(ops[1].imm.value.u & 0x3F) : 64u;
+                        const unsigned index = static_cast<unsigned>(ops[2].imm.value.u & 0x3F);
+                        maxBits = (index + length > 64) ? 0u : length;
+                    }
+                    break;
+                case ZYDIS_MNEMONIC_INSERTQ:
+                    maxBits = 64;
                     break;
                 case ZYDIS_MNEMONIC_VMOVQ:
                     maxBits = 64;

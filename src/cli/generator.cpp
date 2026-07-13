@@ -854,9 +854,18 @@ namespace x86Tester
     {
         setMaxThreads(options.maxThreads);
 
-        Logging::ProgressReport _run("x86Tester Run");
-
         const auto mode = ZydisMachineMode::ZYDIS_MACHINE_MODE_LONG_64;
+
+        const auto& cpu = Cpuid::getCpuInfo();
+        auto outputPath = options.outputPath;
+        outputPath /= fmt::format("{}_f{}m{}s{}", cpu.name, cpu.family, cpu.model, cpu.stepping);
+        if (!options.showList)
+        {
+            std::filesystem::create_directories(outputPath);
+            Logging::setLogPath((outputPath / "x86Tester.log").string());
+        }
+
+        Logging::ProgressReport _run("x86Tester Run");
 
         const auto filter = buildFilter(options.mnemonicNames, options.isaNames, options.categoryNames, options.excludeNames);
         if (!filter)
@@ -872,9 +881,6 @@ namespace x86Tester
             return EXIT_SUCCESS;
         }
 
-        const auto& cpu = Cpuid::getCpuInfo();
-        auto outputPath = options.outputPath;
-        outputPath /= fmt::format("{}_f{}m{}s{}", cpu.name, cpu.family, cpu.model, cpu.stepping);
         Logging::println("Output directory: {}", outputPath.string());
 
         Generator::setStopOnImpossible(options.stopOnImpossible);

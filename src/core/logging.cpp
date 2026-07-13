@@ -262,6 +262,13 @@ namespace x86Tester::Logging
         return fmt::format("{}", n);
     }
 
+    void setLogPath(std::string_view path)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_logFile.open(std::filesystem::path(path), std::ios::out | std::ios::trunc);
+        g_logOpened = true;
+    }
+
     void setConsoleTitle(std::string_view title)
     {
         Detail::setConsoleTitleRaw(title);

@@ -53,6 +53,8 @@ namespace x86Tester::Logging
         Detail::error(msg);
     }
 
+    void setLogPath(std::string_view path);
+
     void setConsoleTitle(std::string_view title);
     void setTitleStatus(std::string_view status);
     void addTitleCases(size_t n);

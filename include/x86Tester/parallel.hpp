@@ -101,9 +101,20 @@ namespace x86Tester
             unsigned hw = std::thread::hardware_concurrency();
             if (hw == 0)
                 hw = 1;
+            if (hw > 32)
+                hw = 32;
             const unsigned maxT = g_maxThreads.load(std::memory_order_relaxed);
             if (maxT != 0)
+            {
+                // User specified amount.
                 hw = maxT;
+            }
+            else
+            {
+                // Keep 1 core available for the system and other tasks.
+                hw = std::max(1u, hw - 1);
+            }
+
             return static_cast<std::size_t>(hw);
         }());
         return instance;

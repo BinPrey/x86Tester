@@ -12,6 +12,8 @@ project(x86Tester
 		CXX
 )
 
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 set(CMAKE_FOLDER thirdparty)
 add_subdirectory(thirdparty)
 unset(CMAKE_FOLDER)

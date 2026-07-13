@@ -35,17 +35,17 @@ jobs:
       - name: Run tester
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester.exe | Select-Object -First 1
           & $exe.FullName --out ci-out cdq clc inc mul div idiv add shld
       - name: Stage artifact
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
-          Copy-Item $exe.FullName x86Tester-cli-windows-x86_64.exe
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester.exe | Select-Object -First 1
+          Copy-Item $exe.FullName x86Tester-windows-x86_64.exe
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: x86Tester-cli-windows-x86_64.exe
+          path: x86Tester-windows-x86_64.exe
 
   linux:
     needs: version
@@ -64,10 +64,10 @@ jobs:
           X86TESTER_VERSION: ${{ needs.version.outputs.version }}
         run: bash scripts/build-linux-musl.sh
       - name: Run tester
-        run: build-musl/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld
+        run: build-musl/x86Tester --out ci-out cdq clc inc mul div idiv add shld
       - name: Verify fully static
         run: |
-          BIN=build-musl/x86Tester-cli
+          BIN=build-musl/x86Tester
           file "$BIN"
           if ldd "$BIN" 2>&1 | grep -qv "not a dynamic executable"; then
             echo "binary is not fully static" >&2
@@ -76,12 +76,12 @@ jobs:
           fi
       - name: Stage artifact
         run: |
-          cp build-musl/x86Tester-cli x86Tester-cli-linux-x86_64
-          strip x86Tester-cli-linux-x86_64
+          cp build-musl/x86Tester x86Tester-linux-x86_64
+          strip x86Tester-linux-x86_64
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: x86Tester-cli-linux-x86_64
+          path: x86Tester-linux-x86_64
 
   publish:
     needs: [version, windows, linux]

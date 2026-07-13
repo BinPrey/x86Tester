@@ -21,7 +21,7 @@ jobs:
       - name: Run tester
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester-cli.exe | Select-Object -First 1
+          $exe = Get-ChildItem -Path build -Recurse -Filter x86Tester.exe | Select-Object -First 1
           & $exe.FullName --out ci-out cdq clc inc mul div idiv add shld
 
   linux-musl:
@@ -39,7 +39,7 @@ jobs:
         run: bash scripts/build-linux-musl.sh
       - name: Verify fully static
         run: |
-          BIN=build-musl/x86Tester-cli
+          BIN=build-musl/x86Tester
           file "$BIN"
           if ldd "$BIN" 2>&1 | grep -qv "not a dynamic executable"; then
             echo "binary is not fully static" >&2
@@ -52,14 +52,14 @@ jobs:
           fi
       - name: Stage artifact
         run: |
-          cp build-musl/x86Tester-cli x86Tester-cli-linux-x86_64
-          strip x86Tester-cli-linux-x86_64
+          cp build-musl/x86Tester x86Tester-linux-x86_64
+          strip x86Tester-linux-x86_64
       - uses: actions/upload-artifact@v4
         with:
-          name: x86Tester-cli-linux-x86_64
-          path: x86Tester-cli-linux-x86_64
+          name: x86Tester-linux-x86_64
+          path: x86Tester-linux-x86_64
       - name: Run tester
-        run: build-musl/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld
+        run: build-musl/x86Tester --out ci-out cdq clc inc mul div idiv add shld
 
   linux-native:
     strategy:
@@ -76,4 +76,4 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Run tester
-        run: build/x86Tester-cli --out ci-out cdq clc inc mul div idiv add shld
+        run: build/x86Tester --out ci-out cdq clc inc mul div idiv add shld

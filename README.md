@@ -69,9 +69,8 @@ file you uploaded:
 
 ## Building
 
-The build is driven by cmkr: edit `cmake.toml`, and `CMakeLists.txt` is generated
-from it. A C++23 compiler is required (`std::print` needs GCC 14 or a recent MSVC)
-and CMake 3.25 or newer.
+A C++23 compiler is required (`std::print` needs GCC 14 or a recent MSVC) and
+CMake 3.25 or newer.
 
 Windows:
 
@@ -92,7 +91,7 @@ Zydis, sfl and GoogleTest are fetched automatically during configuration.
 ## Running
 
 ```
-x86Tester-cli [options] [mnemonic ...]
+x86Tester [options] [mnemonic ...]
 ```
 
 | Option | Meaning |

@@ -875,7 +875,16 @@ namespace x86Tester::Execution
 
         ctx->threadContext->ContextFlags = ctx->contextFlags;
         if ((ctx->contextFlags & CONTEXT_XSTATE) == CONTEXT_XSTATE)
+        {
             SetXStateFeaturesMask(ctx->threadContext, ctx->xstateMask & ~static_cast<DWORD64>(3));
+            for (const DWORD feature : { XSTATE_AVX, XSTATE_AVX512_KMASK, XSTATE_AVX512_ZMM_H, XSTATE_AVX512_ZMM })
+            {
+                DWORD length = 0;
+                if (auto* p = static_cast<std::uint8_t*>(LocateXStateFeature(ctx->threadContext, feature, &length));
+                    p != nullptr && length != 0)
+                    std::memset(p, 0, length);
+            }
+        }
         if (!GetThreadContext(ctx->hThread, ctx->threadContext))
         {
             return false;

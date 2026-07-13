@@ -532,6 +532,9 @@ namespace x86Tester::Execution
 
         if (ctx->useFpRegs)
         {
+            constexpr std::size_t extendedStateOffset = 576;
+            if (ctx->xstate.size() > extendedStateOffset)
+                std::memset(ctx->xstate.data() + extendedStateOffset, 0, ctx->xstate.size() - extendedStateOffset);
             iovec iov{ ctx->xstate.data(), ctx->xstate.size() };
             ptrace(PTRACE_GETREGSET, ctx->pid, reinterpret_cast<void*>(static_cast<std::uintptr_t>(NT_X86_XSTATE)), &iov);
         }

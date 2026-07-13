@@ -205,6 +205,15 @@ namespace x86Tester::Logging
             fileWrite(line);
         }
 
+        void warn(const std::string_view msg)
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            const std::size_t depth = g_stack.empty() ? 0 : g_stack.back().depth;
+            const std::string line = fmt::format("{}{}", indentFor(depth), msg);
+            logLineColored(line, "\x1b[33m");
+            fileWrite(line);
+        }
+
         void error(const std::string_view msg)
         {
             std::lock_guard<std::mutex> lock(g_mutex);

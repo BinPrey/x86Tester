@@ -9,6 +9,7 @@ namespace x86Tester::Logging
     namespace Detail
     {
         void println(const std::string_view msg);
+        void warn(const std::string_view msg);
         void error(const std::string_view msg);
         void startProgress(const std::string_view msg);
     }
@@ -45,6 +46,12 @@ namespace x86Tester::Logging
     {
         auto msg = fmt::format(_Fmt, std::forward<TArgs>(args)...);
         Detail::println(msg);
+    }
+
+    template<typename... TArgs> void warn(const fmt::format_string<TArgs...> _Fmt, TArgs&&... args)
+    {
+        auto msg = fmt::format(_Fmt, std::forward<TArgs>(args)...);
+        Detail::warn(msg);
     }
 
     template<typename... TArgs> void error(const fmt::format_string<TArgs...> _Fmt, TArgs&&... args)

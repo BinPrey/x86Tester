@@ -674,6 +674,19 @@ static bool validateTests(
     bool executionAborted = false;
     std::mutex failureReportMtx;
 
+    const auto badPathFor = [](std::filesystem::path file) {
+        file.replace_extension(".bad");
+        return file;
+    };
+    const auto markBad = [&](const std::filesystem::path& file) {
+        std::error_code ec;
+        std::filesystem::rename(file, badPathFor(file), ec);
+    };
+    const auto clearBad = [&](const std::filesystem::path& file) {
+        std::error_code ec;
+        std::filesystem::remove(badPathFor(file), ec);
+    };
+
     Logging::ProgressReport _validating("Validating tests...");
 
     for (size_t i = 0; i < finalList.size(); ++i)
@@ -696,6 +709,7 @@ static bool validateTests(
         if (!deserializeTestEntries(filePath, groups, instrStore))
         {
             Logging::error("Failed to deserialize test data for mnemonic: {}", ZydisMnemonicGetString(mnemonic));
+            markBad(filePath);
             ++filesUnreadable;
             continue;
         }
@@ -737,6 +751,7 @@ static bool validateTests(
         if (abort)
         {
             Logging::error("Aborted validation due to execution failure");
+            markBad(filePath);
             executionAborted = true;
             break;
         }
@@ -755,6 +770,11 @@ static bool validateTests(
                 }
             }
             Logging::error("[FAIL] {}: {}/{} entries mismatched", ZydisMnemonicGetString(mnemonic), failures, entries);
+            markBad(filePath);
+        }
+        else
+        {
+            clearBad(filePath);
         }
     }
 
@@ -890,6 +910,13 @@ namespace x86Tester
         bool validationOk = true;
         if (!options.skipValidation)
             validationOk = validateTests(finalList, mode, outputPath, options.validateFull);
+
+        if (!validationOk)
+        {
+            Logging::warn("\nValidation detected issues. Please open a new issue on\n"
+                          "https://github.com/BinPrey/x86Tester\n"
+                          "with the x86Tester.log file attached.\n");
+        }
 
         Logging::stopTitleMonitor();
 

@@ -502,8 +502,24 @@ namespace x86Tester::Execution
             return false;
 
         int status = 0;
-        if (waitpid(ctx->pid, &status, 0) != ctx->pid || !WIFSTOPPED(status))
-            return false;
+        for (int guard = 0; guard < 64; ++guard)
+        {
+            if (waitpid(ctx->pid, &status, 0) != ctx->pid || !WIFSTOPPED(status))
+                return false;
+
+            const int stopSig = WSTOPSIG(status);
+            if (stopSig == SIGTRAP || stopSig == SIGILL || stopSig == SIGFPE || stopSig == SIGSEGV
+                || stopSig == SIGBUS)
+                break;
+
+            siginfo_t sigInfo{};
+            long reinject = 0;
+            if (ptrace(PTRACE_GETSIGINFO, ctx->pid, 0, &sigInfo) == 0 && sigInfo.si_code <= 0)
+                reinject = stopSig;
+
+            if (ptrace(PTRACE_CONT, ctx->pid, 0, reinterpret_cast<void*>(reinject)) != 0)
+                return false;
+        }
 
         if (ptrace(PTRACE_GETREGS, ctx->pid, 0, &ctx->regs) != 0)
             return false;

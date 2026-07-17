@@ -1500,23 +1500,7 @@ namespace x86Tester::Generator
         // In order to capture what undefined result it needs to force feeding them as inputs prior.
         // It captures keep vs overwrite behavior, which is what the harness needs to know to set up the inputs correctly.
         flags |= instr.info.cpu_flags->undefined;
-
-        switch (instr.info.mnemonic)
-        {
-            case ZYDIS_MNEMONIC_SHL:
-            case ZYDIS_MNEMONIC_SHR:
-            case ZYDIS_MNEMONIC_SAR:
-            case ZYDIS_MNEMONIC_ROL:
-            case ZYDIS_MNEMONIC_ROR:
-            case ZYDIS_MNEMONIC_RCL:
-            case ZYDIS_MNEMONIC_RCR:
-            case ZYDIS_MNEMONIC_SHLD:
-            case ZYDIS_MNEMONIC_SHRD:
-                flags |= instr.info.cpu_flags->modified;
-                break;
-            default:
-                break;
-        }
+        flags |= instr.info.cpu_flags->modified;
 
         return flags;
     }
@@ -2156,6 +2140,47 @@ namespace x86Tester::Generator
             return;
         }
 
+        const auto flagsModified = getFlagsModified(instr);
+        if (flagsModified != 0)
+        {
+            const std::size_t baseCount = testCase.entries.size();
+            for (std::size_t e = 0; e < baseCount; ++e)
+            {
+                for (int polarity = 0; polarity < 2; ++polarity)
+                {
+                    TestCaseEntry input = testCase.entries[e];
+                    if (input.exceptionType.has_value() || !input.inputFlags.has_value())
+                        continue;
+
+                    const std::uint32_t original = *input.inputFlags;
+                    std::uint32_t forced = polarity ? (original | flagsModified) : (original & ~flagsModified);
+                    forced &= ~ZYDIS_CPUFLAG_TF;
+                    if (forced == original)
+                        continue;
+
+                    input.inputFlags = forced;
+                    input.outputRegs.clear();
+                    input.outputFlags.reset();
+
+                    presetModifiedRegs(mode, ctx, instr, needTwoRuns ? 0xFF : 0x00);
+                    reapplyInputs(ctx, input);
+                    if (!ctx.execute())
+                    {
+                        Logging::println("Failed to execute instruction");
+                        return;
+                    }
+                    if (ctx.getExecutionStatus() != Execution::ExecutionStatus::Success)
+                        continue;
+
+                    TestCaseEntry out{};
+                    captureOutputs(ctx, instr, out);
+                    input.outputRegs = std::move(out.outputRegs);
+                    input.outputFlags = out.outputFlags;
+                    testCase.entries.push_back(std::move(input));
+                }
+            }
+        }
+
         for (std::size_t t = 0; t < testMatrix.size(); ++t)
         {
             if (!satisfied[t])
@@ -2190,6 +2215,16 @@ namespace x86Tester::Generator
                 const std::uint64_t value = (*entry.outputFlags >> i) & 1;
                 facts.push_back(
                     (static_cast<std::uint64_t>(ZYDIS_REGISTER_FLAGS) << 32) | (static_cast<std::uint64_t>(i) << 1) | value);
+            }
+        }
+        if (entry.inputFlags && entry.outputFlags)
+        {
+            for (std::size_t i = 0; i < 32; ++i)
+            {
+                const std::uint64_t inBit = (*entry.inputFlags >> i) & 1;
+                const std::uint64_t outBit = (*entry.outputFlags >> i) & 1;
+                facts.push_back(
+                    0xB000000000000000ull | (static_cast<std::uint64_t>(i) << 2) | (inBit << 1) | outBit);
             }
         }
         if (entry.exceptionType)

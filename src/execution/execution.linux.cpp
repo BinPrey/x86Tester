@@ -3,6 +3,7 @@
 #include <Zydis/Disassembler.h>
 #include <array>
 #include <cassert>
+#include <cerrno>
 #include <cstring>
 #include <span>
 #include <vector>
@@ -25,6 +26,8 @@
 namespace x86Tester::Execution
 {
     static constexpr std::size_t kPageSize = 4096;
+    static constexpr std::uint64_t kStackWindowOffset = 128;
+    static constexpr std::size_t kStackWindowSize = 2048;
 
     struct Context
     {
@@ -591,6 +594,61 @@ namespace x86Tester::Execution
     std::uint64_t getCodeAddress(Context* ctx)
     {
         return ctx->codeAddr;
+    }
+
+    std::uint64_t getStackWindow(Context* ctx)
+    {
+        return ctx->codeBase + kStackWindowOffset + kStackWindowSize / 2;
+    }
+
+    bool writeMemory(Context* ctx, std::uint64_t address, std::span<const std::uint8_t> data)
+    {
+        for (std::size_t i = 0; i < data.size();)
+        {
+            const std::uint64_t addr = address + i;
+            const std::uint64_t aligned = addr & ~static_cast<std::uint64_t>(sizeof(long) - 1);
+            const std::size_t off = static_cast<std::size_t>(addr - aligned);
+            errno = 0;
+            long word = ptrace(PTRACE_PEEKTEXT, ctx->pid, reinterpret_cast<void*>(aligned), 0);
+            if (word == -1 && errno != 0)
+                return false;
+            auto* bytes = reinterpret_cast<std::uint8_t*>(&word);
+            std::size_t n = 0;
+            for (; off + n < sizeof(long) && i + n < data.size(); ++n)
+                bytes[off + n] = data[i + n];
+            if (ptrace(PTRACE_POKETEXT, ctx->pid, reinterpret_cast<void*>(aligned), reinterpret_cast<void*>(word)) != 0)
+                return false;
+            i += n;
+        }
+        return true;
+    }
+
+    sfl::small_vector<std::uint8_t, 16> readMemory(Context* ctx, std::uint64_t address, std::size_t size)
+    {
+        sfl::small_vector<std::uint8_t, 16> out(size, 0);
+        for (std::size_t i = 0; i < size;)
+        {
+            const std::uint64_t addr = address + i;
+            const std::uint64_t aligned = addr & ~static_cast<std::uint64_t>(sizeof(long) - 1);
+            const std::size_t off = static_cast<std::size_t>(addr - aligned);
+            errno = 0;
+            long word = ptrace(PTRACE_PEEKTEXT, ctx->pid, reinterpret_cast<void*>(aligned), 0);
+            if (word == -1 && errno != 0)
+                return {};
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(&word);
+            std::size_t n = 0;
+            for (; off + n < sizeof(long) && i + n < size; ++n)
+                out[i + n] = bytes[off + n];
+            i += n;
+        }
+        return out;
+    }
+
+    bool fillStackWindow(Context* ctx)
+    {
+        std::array<std::uint8_t, kStackWindowSize> buf;
+        buf.fill(0xCC);
+        return writeMemory(ctx, ctx->codeBase + kStackWindowOffset, buf);
     }
 
     ExecutionStatus getExecutionStatus(Context* ctx)

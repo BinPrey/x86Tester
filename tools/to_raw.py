@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import pyarrow.parquet as pq
 
 
@@ -33,6 +34,12 @@ def build_file(rows):
             pool.append(hexval)
         return idx
 
+    def schema_token(name):
+        m = re.match(r"^\[(.+)\]$", name)
+        if m:
+            return "[{}]".format(intern(m.group(1)))
+        return name
+
     groups = {}
     order = []
     for asm, encoding, address, inputs, outputs, exception in rows:
@@ -56,8 +63,11 @@ def build_file(rows):
                 out_schema = list(outputs.keys())
                 break
 
+        in_schema_str = ",".join(schema_token(k) for k in in_schema)
+        out_schema_str = ",".join(schema_token(k) for k in out_schema)
+
         body.append("instr:0x{:X};#{};{};{};in={};out={}".format(
-            g["address"], g["encoding"], g["asm"], len(grows), ",".join(in_schema), ",".join(out_schema)))
+            g["address"], g["encoding"], g["asm"], len(grows), in_schema_str, out_schema_str))
 
         for inputs, outputs, exception in grows:
             left = ",".join(str(intern(inputs[name])) for name in in_schema)

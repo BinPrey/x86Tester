@@ -12,6 +12,8 @@ namespace x86Tester::Execution
 {
     struct Context;
 
+    inline constexpr std::uint64_t kMemoryWindowAddress = 0x4000000ull + 128 + 1024;
+
     enum class ExecutionStatus
     {
         Idle,
@@ -30,6 +32,14 @@ namespace x86Tester::Execution
     bool setRegBytes(Context* ctx, ZydisRegister reg, std::span<const std::uint8_t> data);
 
     sfl::small_vector<std::uint8_t, 16> getRegBytes(Context* ctx, ZydisRegister reg);
+
+    std::uint64_t getStackWindow(Context* ctx);
+
+    bool fillStackWindow(Context* ctx);
+
+    bool writeMemory(Context* ctx, std::uint64_t address, std::span<const std::uint8_t> data);
+
+    sfl::small_vector<std::uint8_t, 16> readMemory(Context* ctx, std::uint64_t address, std::size_t size);
 
     bool execute(Context* ctx);
 
@@ -108,6 +118,26 @@ namespace x86Tester::Execution
         sfl::small_vector<std::uint8_t, 16> getRegBytes(ZydisRegister reg) const
         {
             return x86Tester::Execution::getRegBytes(ctx, reg);
+        }
+
+        std::uint64_t getStackWindow() const
+        {
+            return x86Tester::Execution::getStackWindow(ctx);
+        }
+
+        bool fillStackWindow()
+        {
+            return x86Tester::Execution::fillStackWindow(ctx);
+        }
+
+        bool writeMemory(std::uint64_t address, std::span<const std::uint8_t> data)
+        {
+            return x86Tester::Execution::writeMemory(ctx, address, data);
+        }
+
+        sfl::small_vector<std::uint8_t, 16> readMemory(std::uint64_t address, std::size_t size) const
+        {
+            return x86Tester::Execution::readMemory(ctx, address, size);
         }
 
         template<typename T> T getRegValue(ZydisRegister reg) const

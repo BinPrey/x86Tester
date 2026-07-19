@@ -112,6 +112,8 @@ namespace x86Tester::Generator
     {
         sfl::small_flat_map<ZydisRegister, RegTestData, 2> inputRegs;
         sfl::small_flat_map<ZydisRegister, RegTestData, 2> outputRegs;
+        sfl::small_flat_map<std::uint64_t, RegTestData, 1> inputMem;
+        sfl::small_flat_map<std::uint64_t, RegTestData, 1> outputMem;
         std::optional<std::uint32_t> inputFlags;
         std::optional<std::uint32_t> outputFlags;
         std::optional<ExceptionType> exceptionType;
@@ -119,13 +121,16 @@ namespace x86Tester::Generator
         bool operator==(const TestCaseEntry& other) const
         {
             return inputRegs == other.inputRegs && inputFlags == other.inputFlags && outputRegs == other.outputRegs
-                && outputFlags == other.outputFlags && exceptionType == other.exceptionType;
+                && outputFlags == other.outputFlags && exceptionType == other.exceptionType
+                && inputMem == other.inputMem && outputMem == other.outputMem;
         }
 
         bool operator<(const TestCaseEntry& other) const
         {
-            return std::tie(inputRegs, inputFlags, outputRegs, outputFlags, exceptionType)
-                < std::tie(other.inputRegs, other.inputFlags, other.outputRegs, other.outputFlags, other.exceptionType);
+            return std::tie(inputRegs, inputFlags, outputRegs, outputFlags, exceptionType, inputMem, outputMem)
+                < std::tie(
+                    other.inputRegs, other.inputFlags, other.outputRegs, other.outputFlags, other.exceptionType,
+                    other.inputMem, other.outputMem);
         }
     };
 

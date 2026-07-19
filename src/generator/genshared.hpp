@@ -249,6 +249,89 @@ namespace x86Tester::Generator
         return flags;
     }
 
+    enum class MemKind
+    {
+        None,
+        Stack,
+        String,
+        Disp,
+    };
+
+    struct MemOperand
+    {
+        MemKind kind = MemKind::None;
+        bool reads = false;
+        bool writes = false;
+        std::size_t size = 0;
+        std::int64_t disp = 0;
+        ZydisRegister base = ZYDIS_REGISTER_NONE;
+    };
+
+    struct MemInfo
+    {
+        sfl::static_vector<MemOperand, 2> ops;
+
+        bool present() const
+        {
+            return !ops.empty();
+        }
+
+        bool sweep() const
+        {
+            for (const auto& op : ops)
+                if (op.kind == MemKind::Stack || op.kind == MemKind::String)
+                    return true;
+            return false;
+        }
+    };
+
+    inline MemInfo getMemInfo(const ZydisDisassembledInstruction& instr)
+    {
+        MemInfo info;
+        for (std::size_t i = 0; i < instr.info.operand_count; ++i)
+        {
+            const auto& op = instr.operands[i];
+            if (op.type != ZYDIS_OPERAND_TYPE_MEMORY || op.mem.type == ZYDIS_MEMOP_TYPE_AGEN)
+                continue;
+
+            const bool stack = op.mem.base == ZYDIS_REGISTER_RSP || op.mem.base == ZYDIS_REGISTER_ESP
+                || op.mem.base == ZYDIS_REGISTER_SP;
+            const bool str = op.mem.base == ZYDIS_REGISTER_RDI || op.mem.base == ZYDIS_REGISTER_EDI
+                || op.mem.base == ZYDIS_REGISTER_DI || op.mem.base == ZYDIS_REGISTER_RSI
+                || op.mem.base == ZYDIS_REGISTER_ESI || op.mem.base == ZYDIS_REGISTER_SI;
+            const bool dispOnly = op.mem.base == ZYDIS_REGISTER_NONE && op.mem.index == ZYDIS_REGISTER_NONE;
+
+            MemOperand mo;
+            if (stack)
+            {
+                mo.kind = MemKind::Stack;
+                mo.base = ZYDIS_REGISTER_RSP;
+            }
+            else if (str)
+            {
+                mo.kind = MemKind::String;
+                mo.base = ZydisRegisterGetLargestEnclosing(instr.info.machine_mode, op.mem.base);
+            }
+            else if (dispOnly)
+            {
+                mo.kind = MemKind::Disp;
+                mo.disp = op.mem.disp.value;
+            }
+            else
+                continue;
+
+            mo.size = op.size / 8;
+            if ((op.actions & ZYDIS_OPERAND_ACTION_MASK_READ) != 0)
+                mo.reads = true;
+            if ((op.actions & ZYDIS_OPERAND_ACTION_MASK_WRITE) != 0)
+                mo.writes = true;
+
+            if (info.ops.size() < info.ops.max_size())
+                info.ops.push_back(mo);
+        }
+        return info;
+    }
+
     std::vector<TestBitInfo> generateTestMatrix(const ZydisDisassembledInstruction& instr);
 
 } // namespace x86Tester::Generator

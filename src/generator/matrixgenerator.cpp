@@ -501,6 +501,9 @@ namespace x86Tester::Generator
 
     std::vector<TestBitInfo> generateTestMatrix(const ZydisDisassembledInstruction& instr)
     {
+        if (getMemInfo(instr).sweep())
+            return {};
+
         const auto regsRead = getRegsRead(instr);
         const auto regsModified = getRegsModified(instr);
         const auto flagsModified = getFlagsModified(instr);

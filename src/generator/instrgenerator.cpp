@@ -525,6 +525,32 @@ namespace x86Tester::Generator
         using Mem32Simple = MemT<Detail::Gp32MemRegs, 4, true>;
         using Mem64Simple = MemT<Detail::Gp64MemRegs, 8, true>;
 
+        template<std::uint16_t TMemSize> class MemDispT : public OperandBase
+        {
+        public:
+            ZydisEncoderOperand current() override
+            {
+                ZydisEncoderOperand op{};
+                op.type = ZYDIS_OPERAND_TYPE_MEMORY;
+                op.mem.base = ZYDIS_REGISTER_NONE;
+                op.mem.index = ZYDIS_REGISTER_NONE;
+                op.mem.scale = 0;
+                op.mem.displacement = static_cast<std::int64_t>(Execution::kMemoryWindowAddress);
+                op.mem.size = TMemSize;
+                return op;
+            }
+
+            bool advance() override
+            {
+                return false;
+            }
+        };
+
+        using MemDisp1 = MemDispT<1>;
+        using MemDisp2 = MemDispT<2>;
+        using MemDisp4 = MemDispT<4>;
+        using MemDisp8 = MemDispT<8>;
+
         class Operand
         {
             size_t _index{};
@@ -627,6 +653,26 @@ namespace x86Tester::Generator
             }
         };
 
+        auto addRmMem = [&](std::uint16_t size) {
+            if (opDef.op.encoding != ZYDIS_OPERAND_ENCODING_MODRM_RM)
+                return;
+            switch (size)
+            {
+                case 1:
+                    gens.add<Generators::MemDisp1>();
+                    break;
+                case 2:
+                    gens.add<Generators::MemDisp2>();
+                    break;
+                case 4:
+                    gens.add<Generators::MemDisp4>();
+                    break;
+                case 8:
+                    gens.add<Generators::MemDisp8>();
+                    break;
+            }
+        };
+
         switch (opDef.type)
         {
             case ZYDIS_SEMANTIC_OPTYPE_IMPLICIT_REG:
@@ -635,15 +681,19 @@ namespace x86Tester::Generator
 
             case ZYDIS_SEMANTIC_OPTYPE_GPR8:
                 addSel<Generators::Gp8, Generators::Gp8Simple>(gens, simplified);
+                addRmMem(1);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR16:
                 addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
+                addRmMem(2);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR32:
                 addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
+                addRmMem(4);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR64:
                 addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
+                addRmMem(8);
                 break;
 
             case ZYDIS_SEMANTIC_OPTYPE_GPR_ASZ:
@@ -651,14 +701,21 @@ namespace x86Tester::Generator
                 addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
                 addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
                 addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
+                addRmMem(2);
+                addRmMem(4);
+                addRmMem(8);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR32_32_64:
                 addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
                 addSel<Generators::Gp64, Generators::Gp64Simple>(gens, simplified);
+                addRmMem(4);
+                addRmMem(8);
                 break;
             case ZYDIS_SEMANTIC_OPTYPE_GPR16_32_32:
                 addSel<Generators::Gp16, Generators::Gp16Simple>(gens, simplified);
                 addSel<Generators::Gp32, Generators::Gp32Simple>(gens, simplified);
+                addRmMem(2);
+                addRmMem(4);
                 break;
 
             case ZYDIS_SEMANTIC_OPTYPE_IMM:
@@ -870,6 +927,7 @@ namespace x86Tester::Generator
             case ZYDIS_MNEMONIC_RDTSC:
             case ZYDIS_MNEMONIC_RDTSCP:
             case ZYDIS_MNEMONIC_RDPID:
+            case ZYDIS_MNEMONIC_MCOMMIT:
                 return false;
 
             // x87 instructions that push or pop the FPU stack change TOP, which breaks the
@@ -949,6 +1007,7 @@ namespace x86Tester::Generator
             case ZYDIS_CATEGORY_XSAVE:
             case ZYDIS_CATEGORY_SGX:
             case ZYDIS_CATEGORY_KNCSCALAR:
+            case ZYDIS_CATEGORY_PADLOCK:
                 return false;
         }
         return true;
@@ -1065,14 +1124,25 @@ namespace x86Tester::Generator
         if (instr.info.encoding == ZYDIS_INSTRUCTION_ENCODING_EVEX)
             return false;
 
+        std::size_t memOperands = 0;
         for (std::size_t i = 0; i < instr.info.operand_count; ++i)
         {
             const auto& op = instr.operands[i];
             // A memory read/write operand the harness can't set up disqualifies the instruction, but an
             // AGEN operand only computes an address (its base/index registers are read, never the
-            // memory itself), so it is fine.
+            // memory itself), so it is fine. A stack based operand is set up in the harness window.
             if (op.type == ZYDIS_OPERAND_TYPE_MEMORY && op.mem.type != ZYDIS_MEMOP_TYPE_AGEN)
-                return false;
+            {
+                ++memOperands;
+                const bool stack = op.mem.base == ZYDIS_REGISTER_RSP || op.mem.base == ZYDIS_REGISTER_ESP
+                    || op.mem.base == ZYDIS_REGISTER_SP;
+                const bool str = op.mem.base == ZYDIS_REGISTER_RDI || op.mem.base == ZYDIS_REGISTER_EDI
+                    || op.mem.base == ZYDIS_REGISTER_DI || op.mem.base == ZYDIS_REGISTER_RSI
+                    || op.mem.base == ZYDIS_REGISTER_ESI || op.mem.base == ZYDIS_REGISTER_SI;
+                const bool dispOnly = op.mem.base == ZYDIS_REGISTER_NONE && op.mem.index == ZYDIS_REGISTER_NONE;
+                if ((!stack && !str && !dispOnly) || memOperands > 2)
+                    return false;
+            }
             if (op.type == ZYDIS_OPERAND_TYPE_REGISTER)
             {
                 switch (ZydisRegisterGetClass(op.reg.value))
@@ -1080,6 +1150,7 @@ namespace x86Tester::Generator
                     case ZYDIS_REGCLASS_MMX:
                     case ZYDIS_REGCLASS_BOUND:
                     case ZYDIS_REGCLASS_TMM:
+                    case ZYDIS_REGCLASS_SEGMENT:
                         return false;
                     case ZYDIS_REGCLASS_YMM:
                         if (!Cpuid::getCpuInfo().avx2)
@@ -1622,11 +1693,18 @@ namespace x86Tester::Generator
         if (flagsRead != 0)
         {
             std::uint32_t setFlags = 0;
-            for (std::size_t i = 0; i < 32; ++i)
+            if (iteration == 0)
+                setFlags = 0;
+            else if (iteration == 1)
+                setFlags = flagsRead;
+            else
             {
-                if ((flagsRead & (1 << i)) != 0)
+                for (std::size_t i = 0; i < 32; ++i)
                 {
-                    setFlags |= (prng() % 2) << i;
+                    if ((flagsRead & (1 << i)) != 0)
+                    {
+                        setFlags |= (prng() % 2) << i;
+                    }
                 }
             }
             inputFlags = setFlags;
@@ -1916,7 +1994,9 @@ namespace x86Tester::Generator
         const auto maxAttempts = isInputImmediate ? kAbortTestCaseThreshold / 3 : kAbortTestCaseThreshold;
 
         const auto testMatrix = isCpuid ? std::vector<TestBitInfo>{} : generateTestMatrix(instr);
-        if (!isCpuid && testMatrix.empty())
+        const auto memInfo = getMemInfo(instr);
+        const bool memSweep = memInfo.sweep();
+        if (!isCpuid && testMatrix.empty() && !memSweep)
             return;
 
         auto ctx = Execution::ScopedContext(mode, instrData);
@@ -1985,17 +2065,56 @@ namespace x86Tester::Generator
 
         const bool x87Sweep = x87ReadsRoundingControl(instr.info.mnemonic);
 
+        static constexpr std::array<std::uint64_t, 8> kMemSweepValues = {
+            0x0000000000000000ull, 0xFFFFFFFFFFFFFFFFull, 0xCCCCCCCCCCCCCCCCull, 0x5555555555555555ull,
+            0xAAAAAAAAAAAAAAAAull, 0x0123456789ABCDEFull, 0x8000000000000001ull, 0x00000000FFFFFFFFull,
+        };
+        const bool memActive = memInfo.present();
+        const std::uint64_t stackWindow = memSweep ? ctx.getStackWindow() : 0;
+        std::array<std::uint64_t, 2> memAddr{};
+        for (std::size_t k = 0; k < memInfo.ops.size(); ++k)
+            memAddr[k] = memInfo.ops[k].kind == MemKind::Disp ? static_cast<std::uint64_t>(memInfo.ops[k].disp)
+                                                              : (stackWindow + k * 128);
+
         std::vector<bool> satisfied(testMatrix.size(), false);
         std::size_t satisfiedCount = 0;
 
         std::size_t iteration = 0;
         bool illegalInstr = false;
 
-        while ((satisfiedCount < testMatrix.size() || (x87Sweep && iteration < Detail::kX87ControlWords.size()))
+        while ((satisfiedCount < testMatrix.size() || (x87Sweep && iteration < Detail::kX87ControlWords.size())
+                   || (memSweep && iteration < kMemSweepValues.size()))
             && iteration <= maxAttempts && !illegalInstr)
         {
             TestCaseEntry input{};
             advanceInputs(ctx, prng, inputGenerators, instr, input, iteration);
+
+            if (memSweep)
+            {
+                for (std::size_t k = 0; k < memInfo.ops.size(); ++k)
+                {
+                    const auto& mo = memInfo.ops[k];
+                    if (mo.kind != MemKind::Stack && mo.kind != MemKind::String)
+                        continue;
+                    std::array<std::uint8_t, 8> ptrBytes{};
+                    std::memcpy(ptrBytes.data(), &memAddr[k], sizeof(memAddr[k]));
+                    input.inputRegs[mo.base] = RegTestData(ptrBytes.begin(), ptrBytes.end());
+                }
+            }
+            if (memActive)
+            {
+                for (std::size_t k = 0; k < memInfo.ops.size(); ++k)
+                {
+                    const auto& mo = memInfo.ops[k];
+                    if (!mo.reads)
+                        continue;
+                    const std::size_t vidx = (iteration % 2 == 0) ? iteration : (iteration + k);
+                    const std::uint64_t value = kMemSweepValues[vidx % kMemSweepValues.size()];
+                    input.inputMem[memAddr[k]] = RegTestData(reinterpret_cast<const std::uint8_t*>(&value),
+                        reinterpret_cast<const std::uint8_t*>(&value) + mo.size);
+                }
+            }
+
             iteration++;
 
             testCase.totalAttempts++;
@@ -2005,6 +2124,12 @@ namespace x86Tester::Generator
 
             presetModifiedRegs(mode, ctx, instr, needTwoRuns ? 0xFF : 0x00);
             reapplyInputs(ctx, input);
+            if (memActive)
+            {
+                ctx.fillStackWindow();
+                for (const auto& [addr, bytes] : input.inputMem)
+                    ctx.writeMemory(addr, bytes);
+            }
             if (!ctx.execute())
             {
                 Logging::println("Failed to execute instruction");
@@ -2019,11 +2144,33 @@ namespace x86Tester::Generator
             if (statusA == Execution::ExecutionStatus::Success)
             {
                 captureOutputs(ctx, instr, outA);
+                if (memActive)
+                {
+                    for (std::size_t k = 0; k < memInfo.ops.size(); ++k)
+                    {
+                        const auto& mo = memInfo.ops[k];
+                        if (!mo.writes)
+                            continue;
+                        const std::uint64_t waddr = mo.kind == MemKind::Stack
+                            ? ctx.getRegValue<std::uint64_t>(ZYDIS_REGISTER_RSP)
+                            : memAddr[k];
+                        const auto memBytes = ctx.readMemory(waddr, mo.size);
+                        outA.outputMem[waddr] = RegTestData(memBytes.begin(), memBytes.end());
+                    }
+                }
                 if (x87Sweep)
                 {
                     TestCaseEntry entry = input;
                     entry.outputRegs = outA.outputRegs;
                     entry.outputFlags = outA.outputFlags;
+                    testCase.entries.push_back(std::move(entry));
+                }
+                if (memSweep)
+                {
+                    TestCaseEntry entry = input;
+                    entry.outputRegs = outA.outputRegs;
+                    entry.outputFlags = outA.outputFlags;
+                    entry.outputMem = outA.outputMem;
                     testCase.entries.push_back(std::move(entry));
                 }
             }
@@ -2090,6 +2237,7 @@ namespace x86Tester::Generator
                         TestCaseEntry entry = input;
                         entry.outputRegs = outA.outputRegs;
                         entry.outputFlags = outA.outputFlags;
+                        entry.outputMem = outA.outputMem;
                         testCase.entries.push_back(std::move(entry));
                         satisfied[t] = true;
                         satisfiedCount++;
@@ -2107,6 +2255,7 @@ namespace x86Tester::Generator
                         TestCaseEntry entry = input;
                         entry.outputRegs = outA.outputRegs;
                         entry.outputFlags = outA.outputFlags;
+                        entry.outputMem = outA.outputMem;
                         testCase.entries.push_back(std::move(entry));
                         satisfied[t] = true;
                         satisfiedCount++;
@@ -2127,6 +2276,7 @@ namespace x86Tester::Generator
                     TestCaseEntry entry = input;
                     entry.outputRegs = outA.outputRegs;
                     entry.outputFlags = outA.outputFlags;
+                    entry.outputMem = outA.outputMem;
                     testCase.entries.push_back(std::move(entry));
                     satisfied[t] = true;
                     satisfiedCount++;
@@ -2141,7 +2291,7 @@ namespace x86Tester::Generator
         }
 
         const auto flagsModified = getFlagsModified(instr);
-        if (flagsModified != 0)
+        if (flagsModified != 0 && !memActive)
         {
             const std::size_t baseCount = testCase.entries.size();
             for (std::size_t e = 0; e < baseCount; ++e)
@@ -2206,6 +2356,24 @@ namespace x86Tester::Generator
             {
                 const std::uint64_t value = (data[b / 8] >> (b % 8)) & 1;
                 facts.push_back((static_cast<std::uint64_t>(reg) << 32) | (static_cast<std::uint64_t>(b) << 1) | value);
+            }
+        }
+        for (const auto& [addr, data] : entry.outputMem)
+        {
+            const std::size_t bits = data.size() * 8;
+            for (std::size_t b = 0; b < bits; ++b)
+            {
+                const std::uint64_t value = (data[b / 8] >> (b % 8)) & 1;
+                facts.push_back(0xA000000000000000ull | (static_cast<std::uint64_t>(b) << 1) | value);
+            }
+        }
+        for (const auto& [addr, data] : entry.inputMem)
+        {
+            const std::size_t bits = data.size() * 8;
+            for (std::size_t b = 0; b < bits; ++b)
+            {
+                const std::uint64_t value = (data[b / 8] >> (b % 8)) & 1;
+                facts.push_back(0xF000000000000000ull | (static_cast<std::uint64_t>(b) << 1) | value);
             }
         }
         if (entry.outputFlags)

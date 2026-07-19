@@ -62,20 +62,27 @@ def parse_file(path):
         count = int(parts[3])
         in_schema = [s for s in parts[4][3:].split(",") if s]
         out_schema = [s for s in parts[5][4:].split(",") if s]
+
+        def resolve(name):
+            m = re.match(r"^\[(\d+)\]$", name)
+            if m:
+                return "[" + pool[int(m.group(1))] + "]"
+            return name
+
         for _ in range(count):
             row = lines[i]
             i += 1
             in_part, out_part = row.split("|", 1)
             inputs = {}
             for name, idx in zip(in_schema, [v for v in in_part.split(",") if v]):
-                inputs[name] = pool[int(idx)]
+                inputs[resolve(name)] = pool[int(idx)]
             outputs = {}
             exception = None
             if out_part.startswith("!"):
                 exception = out_part[1:]
             else:
                 for name, idx in zip(out_schema, [v for v in out_part.split(",") if v]):
-                    outputs[name] = pool[int(idx)]
+                    outputs[resolve(name)] = pool[int(idx)]
             yield asm, encoding, address, inputs, outputs, exception
 
 

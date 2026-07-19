@@ -2,6 +2,7 @@
 
 #include <Zydis/Disassembler.h>
 #include <Zydis/Encoder.h>
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fmt/format.h>
@@ -22,6 +23,9 @@
 
 namespace x86Tester::Execution
 {
+    static constexpr std::uintptr_t kStackWindowOffset = 128;
+    static constexpr std::size_t kStackWindowSize = 2048;
+
     struct Context
     {
         STARTUPINFOW startupInfo{};
@@ -323,7 +327,8 @@ namespace x86Tester::Execution
         auto* remoteCodeAddr = imageBase;
 
         DWORD oldProtect = 0;
-        if (!VirtualProtectEx(ctx->processInfo.hProcess, remoteCodeAddr, code.size() + 2, PAGE_EXECUTE_READWRITE, &oldProtect))
+        const std::size_t protectSize = std::max<std::size_t>(code.size() + 2, kStackWindowOffset + kStackWindowSize);
+        if (!VirtualProtectEx(ctx->processInfo.hProcess, remoteCodeAddr, protectSize, PAGE_EXECUTE_READWRITE, &oldProtect))
         {
             return false;
         }
@@ -939,6 +944,40 @@ namespace x86Tester::Execution
     std::uint64_t getCodeAddress(Context* ctx)
     {
         return ctx->codeAddr;
+    }
+
+    std::uint64_t getStackWindow(Context* ctx)
+    {
+        return ctx->codeBase + kStackWindowOffset + kStackWindowSize / 2;
+    }
+
+    bool writeMemory(Context* ctx, std::uint64_t address, std::span<const std::uint8_t> data)
+    {
+        SIZE_T written = 0;
+        return WriteProcessMemory(
+                   ctx->processInfo.hProcess, reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), data.data(),
+                   data.size(), &written)
+            != FALSE
+            && written == data.size();
+    }
+
+    sfl::small_vector<std::uint8_t, 16> readMemory(Context* ctx, std::uint64_t address, std::size_t size)
+    {
+        sfl::small_vector<std::uint8_t, 16> out(size, 0);
+        SIZE_T read = 0;
+        if (!ReadProcessMemory(
+                ctx->processInfo.hProcess, reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), out.data(),
+                size, &read)
+            || read != size)
+            return {};
+        return out;
+    }
+
+    bool fillStackWindow(Context* ctx)
+    {
+        std::array<std::uint8_t, kStackWindowSize> buf;
+        buf.fill(0xCC);
+        return writeMemory(ctx, ctx->codeBase + kStackWindowOffset, buf);
     }
 
     ExecutionStatus getExecutionStatus(Context* ctx)

@@ -126,6 +126,8 @@ static bool serializeTestEntries(
 
         std::set<ZydisRegister> inRegs;
         std::set<ZydisRegister> outRegs;
+        std::set<std::uint64_t> inMem;
+        std::set<std::uint64_t> outMem;
         bool inHasFlags = false;
         bool outHasFlags = false;
         for (const auto& entry : group.entries)
@@ -134,13 +136,43 @@ static bool serializeTestEntries(
                 inRegs.insert(reg);
             for (const auto& [reg, data] : entry.outputRegs)
                 outRegs.insert(reg);
+            for (const auto& [addr, data] : entry.inputMem)
+                inMem.insert(addr);
+            for (const auto& [addr, data] : entry.outputMem)
+                outMem.insert(addr);
             inHasFlags = inHasFlags || entry.inputFlags.has_value();
             outHasFlags = outHasFlags || entry.outputFlags.has_value();
         }
 
+        const auto internAddr = [&](std::uint64_t addr) {
+            std::array<std::uint8_t, 8> bytes{};
+            std::memcpy(bytes.data(), &addr, 8);
+            return intern(Utils::hexEncode(bytes));
+        };
+        const auto memSchema = [&](const std::set<std::uint64_t>& addrs) {
+            std::string s;
+            for (const auto addr : addrs)
+            {
+                if (!s.empty())
+                    s += ",";
+                s += fmt::format("[{}]", internAddr(addr));
+            }
+            return s;
+        };
+        const auto joinSchema = [](std::string a, const std::string& b) {
+            if (b.empty())
+                return a;
+            if (a.empty())
+                return b;
+            return a + "," + b;
+        };
+
+        const auto inSchema = joinSchema(buildSchema(inRegs, inHasFlags), memSchema(inMem));
+        const auto outSchema = joinSchema(buildSchema(outRegs, outHasFlags), memSchema(outMem));
+
         body += fmt::format(
             "instr:0x{:X};#{};{};{};in={};out={}\n", group.address, Utils::hexEncode(group.instrData), instr.text,
-            group.entries.size(), buildSchema(inRegs, inHasFlags), buildSchema(outRegs, outHasFlags));
+            group.entries.size(), inSchema, outSchema);
 
         for (const auto& entry : group.entries)
         {
@@ -158,6 +190,13 @@ static bool serializeTestEntries(
                 if (!row.empty())
                     row += ",";
                 row += fmt::format("{}", internFlags(entry.inputFlags.value_or(0)));
+            }
+            for (const auto addr : inMem)
+            {
+                if (!row.empty())
+                    row += ",";
+                const auto it = entry.inputMem.find(addr);
+                row += fmt::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
             }
 
             row += "|";
@@ -181,7 +220,16 @@ static bool serializeTestEntries(
                 {
                     if (!firstOut)
                         row += ",";
+                    firstOut = false;
                     row += fmt::format("{}", internFlags(entry.outputFlags.value_or(0)));
+                }
+                for (const auto addr : outMem)
+                {
+                    if (!firstOut)
+                        row += ",";
+                    firstOut = false;
+                    const auto it = entry.outputMem.find(addr);
+                    row += fmt::format("{}", intern(Utils::hexEncode({ it->second.data(), it->second.size() })));
                 }
             }
 
@@ -460,9 +508,17 @@ static bool deserializeTestEntries(
         const auto inSchema = parseSchema(header[4]);
         const auto outSchema = parseSchema(header[5]);
 
+        const auto poolAddr = [&](std::size_t idx) -> std::uint64_t {
+            std::uint64_t addr = 0;
+            if (idx < pool.size())
+                std::memcpy(&addr, pool[idx].data(), std::min<std::size_t>(pool[idx].size(), 8));
+            return addr;
+        };
+
         const auto applySide = [&](std::string_view idxList, const std::vector<std::string_view>& schema,
                                    sfl::small_flat_map<ZydisRegister, RegTestData, 2>& regs,
-                                   std::optional<std::uint32_t>& flagsOut) -> bool {
+                                   std::optional<std::uint32_t>& flagsOut,
+                                   sfl::small_flat_map<std::uint64_t, RegTestData, 1>& mem) -> bool {
             std::vector<std::string_view> idxTokens;
             if (!idxList.empty())
                 idxTokens = split(idxList, ',');
@@ -476,6 +532,14 @@ static bool deserializeTestEntries(
                 if (schema[i] == "flags")
                 {
                     flagsOut = poolFlags(idx);
+                }
+                else if (!schema[i].empty() && schema[i].front() == '[')
+                {
+                    const auto inner = schema[i].substr(1, schema[i].size() - 2);
+                    const std::size_t addrIdx = std::strtoull(std::string(inner).c_str(), nullptr, 10);
+                    if (addrIdx >= pool.size())
+                        return false;
+                    mem[poolAddr(addrIdx)] = RegTestData{ pool[idx].begin(), pool[idx].end() };
                 }
                 else
                 {
@@ -499,7 +563,7 @@ static bool deserializeTestEntries(
                 return false;
 
             TestCaseEntry entry{};
-            if (!applySide(sides[0], inSchema, entry.inputRegs, entry.inputFlags))
+            if (!applySide(sides[0], inSchema, entry.inputRegs, entry.inputFlags, entry.inputMem))
                 return false;
 
             if (!sides[1].empty() && sides[1][0] == '!')
@@ -509,7 +573,7 @@ static bool deserializeTestEntries(
                     return false;
                 entry.exceptionType = *exc;
             }
-            else if (!applySide(sides[1], outSchema, entry.outputRegs, entry.outputFlags))
+            else if (!applySide(sides[1], outSchema, entry.outputRegs, entry.outputFlags, entry.outputMem))
             {
                 return false;
             }
@@ -611,6 +675,13 @@ static GroupReport validateTestEntries(
             ctx.setRegBytes(reg, std::span<const std::uint8_t>{ bytes.data(), bytes.size() });
         ctx.setRegValue(ZYDIS_REGISTER_EFLAGS, entry.inputFlags.value_or(0));
 
+        if (!entry.inputMem.empty() || !entry.outputMem.empty())
+        {
+            ctx.fillStackWindow();
+            for (const auto& [addr, bytes] : entry.inputMem)
+                ctx.writeMemory(addr, std::span<const std::uint8_t>{ bytes.data(), bytes.size() });
+        }
+
         const bool ran = ctx.execute();
         const auto status = ctx.getExecutionStatus();
         const bool expectException = entry.exceptionType && *entry.exceptionType != ExceptionType::None;
@@ -651,6 +722,20 @@ static GroupReport validateTestEntries(
                     reason = fmt::format(
                         "flags: expected {:08X} got {:08X} (mask {:08X})", *entry.outputFlags & detFlagMask,
                         actualFlags & detFlagMask, detFlagMask);
+            }
+            if (reason.empty())
+            {
+                for (const auto& [addr, expected] : entry.outputMem)
+                {
+                    const auto actual = ctx.readMemory(addr, expected.size());
+                    if (actual.size() < expected.size() || !std::equal(expected.begin(), expected.end(), actual.begin()))
+                    {
+                        reason = fmt::format(
+                            "[{:X}]: expected {} got {}", addr, Utils::hexEncode({ expected.data(), expected.size() }),
+                            Utils::hexEncode({ actual.data(), std::min(actual.size(), expected.size()) }));
+                        break;
+                    }
+                }
             }
         }
 

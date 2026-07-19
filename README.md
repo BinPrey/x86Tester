@@ -149,12 +149,29 @@ Each tested encoding has a header line followed by `count` rows:
 - `in schema`, `out schema`: comma separated register names that are read and
   written, with `flags` appended when flags are part of the state. Names use the
   Zydis spelling, including x87 registers such as `st0`, `x87status` and
-  `x87control`. The order matches the values in each row.
+  `x87control`. A memory operand appears as `[<pool index>]`, where the pool value
+  at that index is the memory address the operand accessed. The order matches the
+  values in each row.
 
 A row is `<inputs>|<outputs>`. The inputs are comma separated pool indices, one
 per name in the input schema, in order. The outputs are either comma separated
 pool indices, one per name in the output schema, or `!<exception>` when the
-instruction faulted, for example `!INT_DIVIDE_ERROR` or `!INT_OVERFLOW`.
+instruction faulted, for example `!INT_DIVIDE_ERROR` or `!INT_OVERFLOW`. A memory
+operand's value in a row is the bytes read from or written to its address, again
+as a pool index.
+
+Stack instructions (`push`, `pop`, `pushfq`, `popfq` and similar) are tested with
+`rsp` pinned to a scratch memory window, so their memory operand address is a
+fixed value in the pool. For example `push rax` records `out=rsp,[i]` where the
+pool value at `i` is the address `rsp` points at after the push, and the row's
+memory value is the pushed bytes.
+
+Instructions with an explicit memory operand are tested in an absolute
+displacement form that points at the same scratch window, for example
+`add [0x0000000004000480], al`. The register and flag results are covered first by
+the normal sweep, then a few cases exercise the memory operand reusing those
+values, so `[i]` appears as an input for a memory read, an output for a write, or
+both for a read modify write.
 
 For x87 arithmetic that rounds (`fadd`, `fmul`, `fdiv`, `fsqrt`, `frndint` and
 similar), `x87control` is provided as an input and swept over every rounding and

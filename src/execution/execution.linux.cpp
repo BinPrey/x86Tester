@@ -55,6 +55,9 @@ namespace x86Tester::Execution
 
         long page = 0;
         __asm__ volatile(
+            "pushfq\n\t"
+            "andq $-2097153, (%%rsp)\n\t"
+            "popfq\n\t"
             "movq $9, %%rax\n\t"
             "movq $0x4000000, %%rdi\n\t"
             "movq %1, %%rsi\n\t"

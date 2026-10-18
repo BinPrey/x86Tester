@@ -49,7 +49,7 @@ def build_file(rows):
             g = {"asm": asm, "address": address, "encoding": encoding, "rows": []}
             groups[key] = g
             order.append(key)
-        g["rows"].append((inputs, outputs, exception))
+        g["rows"].append((json.loads(inputs), json.loads(outputs), exception))
 
     body = []
     for key in order:
@@ -88,30 +88,10 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    table = pq.read_table(args.input)
-    folder = cpu_folder(table.schema.metadata)
-    mnem = table.column("mnemonic").to_pylist()
-    addr = table.column("address").to_pylist()
-    asm = table.column("asm").to_pylist()
-    enc = table.column("encoding").to_pylist()
-    ins = table.column("inputs").to_pylist()
-    outs = table.column("outputs").to_pylist()
-    excs = table.column("exception").to_pylist()
+    parquet = pq.ParquetFile(args.input)
+    folder = cpu_folder(parquet.schema_arrow.metadata)
 
-    by_mnem = {}
-    order = []
-    for i in range(len(mnem)):
-        m = mnem[i]
-        rows = by_mnem.get(m)
-        if rows is None:
-            rows = []
-            by_mnem[m] = rows
-            order.append(m)
-        rows.append((asm[i], enc[i], addr[i], json.loads(ins[i]), json.loads(outs[i]), excs[i]))
-
-    total = 0
-    for m in order:
-        rows = by_mnem[m]
+    def write_file(m, rows):
         pool, body = build_file(rows)
         with open(os.path.join(args.output_dir, m + ".txt"), "w", encoding="utf-8", newline="\n") as f:
             if folder:
@@ -121,8 +101,33 @@ def main():
                 f.write("#{}\n".format(h))
             for line in body:
                 f.write(line + "\n")
+
+    columns = ["mnemonic", "address", "asm", "encoding", "inputs", "outputs", "exception"]
+    done = set()
+    current = None
+    rows = []
+    total = 0
+    for batch in parquet.iter_batches(batch_size=65536, columns=columns):
+        mnem, addr, asm, enc, ins, outs, excs = (batch.column(c).to_pylist() for c in columns)
+        for i in range(len(mnem)):
+            m = mnem[i]
+            if m != current:
+                if current is not None:
+                    write_file(current, rows)
+                    done.add(current)
+                    total += len(rows)
+                if m in done:
+                    raise SystemExit("{}: rows for '{}' are not contiguous".format(args.input, m))
+                current = m
+                rows = []
+            rows.append((asm[i], enc[i], addr[i], ins[i], outs[i], excs[i]))
+
+    if current is not None:
+        write_file(current, rows)
+        done.add(current)
         total += len(rows)
-    print("{} rows -> {} ({} mnemonics)".format(total, args.output_dir, len(order)))
+
+    print("{} rows -> {} ({} mnemonics)".format(total, args.output_dir, len(done)))
 
 
 if __name__ == "__main__":
